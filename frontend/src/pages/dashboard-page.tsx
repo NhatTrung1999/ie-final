@@ -371,11 +371,7 @@ export function DashboardPage({
     });
   };
 
-  const handleTableReorder = (activeNo: string, overNo: string) => {
-    const activeId = tableRows.find((row) => row.no === activeNo)?.id;
-    const overId = tableRows.find((row) => row.no === overNo)?.id;
-    if (!activeId || !overId) return;
-
+  const handleTableReorder = (activeId: string, overId: string) => {
     const nextRows = reorderItems(tableRows, activeId, overId);
     const relevantCodes = new Set(nextRows.map((row) => row.no.toUpperCase()));
     const stageScoped = orderedStageItems.filter(

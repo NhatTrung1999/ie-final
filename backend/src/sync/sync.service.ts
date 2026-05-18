@@ -159,6 +159,11 @@ export class SyncService {
     const savedFiles: string[] = [];
     const videoPathByAssetId = new Map<string, string>();
     const stageIdMap = new Map<string, string>();
+    const stageById = new Map(
+      (snapshot.stages ?? [])
+        .filter((stage) => stage.id)
+        .map((stage) => [stage.id, stage]),
+    );
 
     try {
       for (const [index, file] of videos.entries()) {
@@ -168,7 +173,11 @@ export class SyncService {
           continue;
         }
 
-        const filePath = await saveSyncVideoFile(actor.sub, ref.assetId, file);
+        const filePath = await saveSyncVideoFile(
+          ref.assetId,
+          file,
+          ref.stageId ? stageById.get(ref.stageId) : undefined,
+        );
         savedFiles.push(filePath);
         videoPathByAssetId.set(ref.assetId, filePath);
       }
@@ -873,13 +882,24 @@ function parseVideoRefs(value: string | object | undefined | null): SyncVideoRef
   }
 }
 
-async function saveSyncVideoFile(ownerUserId: string, assetId: string, file: Express.Multer.File) {
+async function saveSyncVideoFile(
+  assetId: string,
+  file: Express.Multer.File,
+  stage?: SyncStageItem,
+) {
   ensureStageUploadDir();
 
-  const safeOwner = sanitizeFileName(ownerUserId);
-  const safeAsset = sanitizeFileName(assetId);
   const extension = extname(file.originalname).toLowerCase() || '.mp4';
-  const targetDir = join(stageUploadDir, 'sync', safeOwner || 'owner', safeAsset || 'asset');
+  const targetDir = stage
+    ? join(
+        stageUploadDir,
+        sanitizePathSegment(stage.stageDate, 'unknown-date'),
+        sanitizePathSegment(stage.season, 'unknown-season'),
+        sanitizePathSegment(stage.processStage, 'unknown-stage'),
+        sanitizePathSegment(stage.area ?? stage.stage, 'unknown-area'),
+        sanitizePathSegment(stage.article, 'unknown-article'),
+      )
+    : join(stageUploadDir, 'sync', sanitizeFileName(assetId) || 'asset');
   const targetPath = join(targetDir, `${randomUUID()}${extension}`);
 
   await mkdir(targetDir, { recursive: true });
@@ -964,6 +984,11 @@ function formatClock(totalSeconds: number) {
 
 function sanitizeFileName(fileName: string) {
   return fileName.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
+}
+
+function sanitizePathSegment(value: string | undefined | null, fallback: string) {
+  const normalized = sanitizeFileName((value ?? '').trim());
+  return normalized || fallback;
 }
 
 function isUuid(value?: string | null) {

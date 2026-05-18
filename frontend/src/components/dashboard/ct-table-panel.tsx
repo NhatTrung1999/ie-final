@@ -65,7 +65,7 @@ type CtTablePanelProps = {
   isPlaying?: boolean;
   /** IDs of all stage items currently visible (after applying date/season/etc. filters). Used for LSA export scoping. */
   filteredStageItemIds?: string[];
-  onReorder: (activeNo: string, overNo: string) => void;
+  onReorder: (activeId: string, overId: string) => void;
   onRefresh: (options?: { ignoreSelection?: boolean }) => Promise<void> | void;
   onToggleStageItemActive: (stageItemId: string | null) => void;
 };
@@ -125,7 +125,7 @@ function SortableCtRowGroup({
     transform,
     transition,
     isDragging: sortableDragging,
-  } = useSortable({ id: row.id, disabled: isLockedWhilePlaying });
+  } = useSortable({ id: row.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -160,21 +160,15 @@ function SortableCtRowGroup({
               <button
                 type="button"
                 title="Drag to reorder"
-                disabled={isLockedWhilePlaying}
                 {...attributes}
                 {...listeners}
                 onClick={(e) => e.stopPropagation()}
-                className={cn(
-                  'rounded-md p-0.5 touch-none',
-                  isLockedWhilePlaying ? 'cursor-not-allowed opacity-50' : '',
-                )}
+                className="rounded-md p-0.5 touch-none"
               >
                 <GripVertical
                   className={cn(
                     'mx-auto h-3 w-3 text-gray-300 dark:text-slate-600',
-                    isLockedWhilePlaying
-                      ? 'cursor-not-allowed'
-                      : 'cursor-grab active:cursor-grabbing',
+                    'cursor-grab active:cursor-grabbing',
                   )}
                 />
               </button>
@@ -881,18 +875,18 @@ export function CtTablePanel({
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     setActiveDragRowId(null);
 
-    if (isTableLocked || !over || active.id === over.id) {
+    if (!over || active.id === over.id) {
       return;
     }
 
     const activeRow = rowById.get(String(active.id));
     const overRow = rowById.get(String(over.id));
 
-    if (!activeRow || !overRow || activeRow.no === overRow.no) {
+    if (!activeRow || !overRow) {
       return;
     }
 
-    onReorder(activeRow.no, overRow.no);
+    onReorder(activeRow.id, overRow.id);
   };
 
   return (

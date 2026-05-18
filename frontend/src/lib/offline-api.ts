@@ -390,6 +390,16 @@ export async function createOfflineStages(payload: {
         name: parsedIdentity.name,
       });
       const videoAssetId = createId();
+      const videoUrl = createOfflineStageVideoUrl(
+        {
+          date,
+          season,
+          stageCode,
+          area,
+          article,
+        },
+        file.name,
+      );
 
       const nextStage: OfflineStageItem = {
         id: createId(),
@@ -405,6 +415,7 @@ export async function createOfflineStages(payload: {
         stage: area || 'CUTTING',
         stageDate: date,
         completed: false,
+        videoUrl,
         videoAssetId,
         sortOrder: db.stages.length + index + 1,
       };
@@ -684,40 +695,84 @@ function createEmptyDb(): OfflineDb {
 }
 
 function createSeedMachineTypes(): MachineTypeItem[] {
-  return [
-    {
-      id: 'machine-1',
-      department: 'CUTTING',
-      label: 'CUTTING-01',
-      labelCn: 'Cutting Machine 01',
-      labelVn: 'May cat 01',
-      loss: '0%',
-    },
-    {
-      id: 'machine-2',
-      department: 'CUTTING',
-      label: 'CUTTING-02',
-      labelCn: 'Cutting Machine 02',
-      labelVn: 'May cat 02',
-      loss: '5%',
-    },
-    {
-      id: 'machine-3',
-      department: 'STITCHING',
-      label: 'STITCHING-01',
-      labelCn: 'Stitching Machine 01',
-      labelVn: 'May may 01',
-      loss: '3%',
-    },
-    {
-      id: 'machine-4',
-      department: 'ASSEMBLY',
-      label: 'ASSEMBLY-01',
-      labelCn: 'Assembly Machine 01',
-      labelVn: 'May lap rap 01',
-      loss: '2%',
-    },
-  ];
+  const defaults = [
+    ['CUTTING', 'Cutting', '7.0%'],
+    ['CUTTING', 'Cutting canvas&other', '7.0%'],
+    ['CUTTING', 'Buffing', '10.0%'],
+    ['CUTTING', 'Buffing mouse machine', '10.0%'],
+    ['CUTTING', 'Skiving', '10.0%'],
+    ['CUTTING', 'Rolling', '10.0%'],
+    ['CUTTING', 'Printing', '10.0%'],
+    ['CUTTING', 'Embossing', '10.0%'],
+    ['CUTTING', 'Sockliner transfer print machine', '10.0%'],
+    ['CUTTING', 'Laser Machine', '15.0%'],
+    ['CUTTING', 'Auto Machine', '15.0%'],
+    ['STITCHING', 'Cementing', '7.0%'],
+    ['STITCHING', 'Attaching reinforcement', '7.0%'],
+    ['STITCHING', 'Attaching 3 sides tape', '7.0%'],
+    ['STITCHING', 'Marking', '7.0%'],
+    ['STITCHING', 'Handwork', '7.0%'],
+    ['STITCHING', 'Foding machine', '10.0%'],
+    ['STITCHING', 'Punching machine', '10.0%'],
+    ['STITCHING', 'Eyeleting machine', '10.0%'],
+    ['STITCHING', 'Edge folding machine', '10.0%'],
+    ['STITCHING', 'Tongue label pressing machine', '10.0%'],
+    ['STITCHING', 'Hotmelt Spraying macthine', '10.0%'],
+    ['STITCHING', 'Hotmelt applying macthine', '10.0%'],
+    ['STITCHING', 'Trimming machine', '10.0%'],
+    ['STITCHING', 'Hammering machine', '10.0%'],
+    ['STITCHING', 'Blowing machine', '10.0%'],
+    ['STITCHING', 'Computer Stitching', '12.5%'],
+    ['STITCHING', 'Oversew machine', '12.5%'],
+    ['STITCHING', 'Flat type machine', '12.5%'],
+    ['STITCHING', '2 needles Flat type machine', '12.5%'],
+    ['STITCHING', 'Heat Pressing seam tape', '12.5%'],
+    ['STITCHING', 'Toe gathering machine', '12.5%'],
+    ['STITCHING', 'Post type', '12.5%'],
+    ['STITCHING', 'Edge machine', '15.0%'],
+    ['STITCHING', 'Knitting machine', '15.0%'],
+    ['STITCHING', 'Binding&Zigzag stitching machine', '15.0%'],
+    ['STITCHING', 'Zigzag', '15.0%'],
+    ['STITCHING', '2 needles Post type', '15.0%'],
+    ['STITCHING', '4 needles 6 threads machine', '15.0%'],
+    ['ASSEMBLY', 'Attaching eyestay', '7.0%'],
+    ['ASSEMBLY', 'Rolling upper', '7.0%'],
+    ['ASSEMBLY', 'Rolling', '7.0%'],
+    ['ASSEMBLY', 'Trimming toe cap', '7.0%'],
+    ['ASSEMBLY', 'Handwork', '7.0%'],
+    ['ASSEMBLY', 'Packing Handwork', '7.0%'],
+    ['ASSEMBLY', 'Marking', '7.0%'],
+    ['ASSEMBLY', 'Cementing', '7.0%'],
+    ['ASSEMBLY', 'Attaching', '7.0%'],
+    ['ASSEMBLY', 'Cleaning', '7.0%'],
+    ['ASSEMBLY', 'Pressing for heel', '11.0%'],
+    ['ASSEMBLY', 'Pressing for vamp', '11.0%'],
+    ['ASSEMBLY', 'Marking on upper Machine', '11.0%'],
+    ['ASSEMBLY', 'Hotmelt applying macthine', '11.0%'],
+    ['ASSEMBLY', 'EVA bottom wrinkle removing machine', '11.0%'],
+    ['ASSEMBLY', 'Lasting machine', '11.0%'],
+    ['ASSEMBLY', 'Pressing machine', '11.0%'],
+    ['ASSEMBLY', 'Versatile Pressing Machine', '11.0%'],
+    ['ASSEMBLY', 'Buffing', '11.0%'],
+    ['ASSEMBLY', 'Trim off excessed rubber machine', '11.0%'],
+    ['ASSEMBLY', 'Cross pressing machine', '11.0%'],
+    ['ASSEMBLY', 'Heel lasting machine', '11.0%'],
+    ['ASSEMBLY', 'Upper steaming machine', '11.0%'],
+    ['ASSEMBLY', 'Heel counter activated machine', '11.0%'],
+    ['ASSEMBLY', 'Strobelling machine', '15.0%'],
+    ['ASSEMBLY', 'Stitching thread on outsole', '15.0%'],
+    ['ASSEMBLY', 'Toe lasting machine', '15.0%'],
+    ['ASSEMBLY', 'Side lasting machine', '15.0%'],
+  ] as const;
+
+  return defaults.map(([department, label, loss], index) => ({
+    id: `seed-machine-${index + 1}`,
+    department,
+    label,
+    labelCn: '',
+    labelVn: '',
+    loss,
+  }));
 }
 
 function loadDb(): OfflineDb {
@@ -854,7 +909,12 @@ function mergeDb(seed: OfflineDb, parsed: Partial<OfflineDb>): OfflineDb {
         : seed.deleteLogs,
     machineTypes:
       Array.isArray(parsed.machineTypes) && parsed.machineTypes.length > 0
-        ? (parsed.machineTypes as MachineTypeItem[])
+        ? mergeMachineTypes(
+            seed.machineTypes,
+            (parsed.machineTypes as MachineTypeItem[]).filter(
+              (item) => !isLegacyDemoMachineType(item),
+            ),
+          )
         : seed.machineTypes,
   };
 }
@@ -910,16 +970,29 @@ function mergeMachineTypes(
   const merged = new Map<string, MachineTypeItem>();
 
   currentTypes.forEach((item) => {
-    merged.set(item.id, item);
+    merged.set(getMachineTypeMergeKey(item), item);
   });
 
   nextTypes.forEach((item) => {
-    if (!merged.has(item.id)) {
-      merged.set(item.id, item);
-    }
+    merged.set(getMachineTypeMergeKey(item), item);
   });
 
   return [...merged.values()];
+}
+
+function getMachineTypeMergeKey(item: MachineTypeItem) {
+  return [
+    normalizeText(item.department),
+    item.label.trim().toLowerCase(),
+    item.labelCn.trim().toLowerCase(),
+  ].join('::');
+}
+
+function isLegacyDemoMachineType(item: MachineTypeItem) {
+  return (
+    ['machine-1', 'machine-2', 'machine-3', 'machine-4'].includes(item.id) &&
+    ['CUTTING-01', 'CUTTING-02', 'STITCHING-01', 'ASSEMBLY-01'].includes(item.label)
+  );
 }
 
 function mergeStageItems(
@@ -1429,6 +1502,16 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
           name: parsedIdentity.name,
         });
         const videoAssetId = createId();
+        const videoUrl = createOfflineStageVideoUrl(
+          {
+            date,
+            season,
+            stageCode,
+            area,
+            article,
+          },
+          file.name,
+        );
 
         const nextStage: OfflineStageItem = {
           id: createId(),
@@ -1444,6 +1527,7 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
           stage: area || 'CUTTING',
           stageDate: date,
           completed: false,
+          videoUrl,
           videoAssetId,
           sortOrder: db.stages.length + index + 1,
         };
@@ -1526,6 +1610,9 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       const duplicatedAssetId = createId();
       const duplicated = await cloneVideoAsset(source.videoAssetId, duplicatedAssetId);
       nextStage.videoAssetId = duplicated ? duplicatedAssetId : source.videoAssetId;
+      if (duplicated) {
+        nextStage.videoUrl = createOfflineDuplicateStageVideoUrl(source);
+      }
     }
 
     db.stages.push(nextStage);
@@ -2168,6 +2255,58 @@ function createId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `offline-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function sanitizeUploadPathSegment(value: string | undefined, fallback: string) {
+  const normalized = (value ?? '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .toLowerCase();
+
+  return normalized || fallback;
+}
+
+function getFileExtension(fileName: string | undefined) {
+  const matched = (fileName ?? '').match(/\.([a-zA-Z0-9]+)$/);
+  return matched ? `.${matched[1].toLowerCase()}` : '.mp4';
+}
+
+function createOfflineStageVideoUrl(
+  payload: {
+    date: string;
+    season: string;
+    stageCode: string;
+    area: string;
+    article: string;
+  },
+  fileName: string | undefined,
+) {
+  const pathSegments = [
+    sanitizeUploadPathSegment(payload.date, 'unknown-date'),
+    sanitizeUploadPathSegment(payload.season, 'unknown-season'),
+    sanitizeUploadPathSegment(payload.stageCode, 'unknown-stage'),
+    sanitizeUploadPathSegment(payload.area, 'unknown-area'),
+    sanitizeUploadPathSegment(payload.article, 'unknown-article'),
+  ];
+
+  return `/uploads/${pathSegments.join('/')}/${createId()}${getFileExtension(fileName)}`;
+}
+
+function createOfflineDuplicateStageVideoUrl(source: OfflineStageItem) {
+  const sourceUrl = source.videoUrl ?? '';
+  const extension = getFileExtension(sourceUrl);
+  const directory = sourceUrl.startsWith('/uploads/') && sourceUrl.includes('/')
+    ? sourceUrl.slice(0, sourceUrl.lastIndexOf('/'))
+    : `/uploads/${[
+        sanitizeUploadPathSegment(source.stageDate ?? '', 'unknown-date'),
+        sanitizeUploadPathSegment(source.season, 'unknown-season'),
+        sanitizeUploadPathSegment(source.processStage, 'unknown-stage'),
+        sanitizeUploadPathSegment(source.area ?? source.stage, 'unknown-area'),
+        sanitizeUploadPathSegment(source.article, 'unknown-article'),
+      ].join('/')}`;
+
+  return `${directory}/${createId()}${extension}`;
 }
 
 function getStageMergeKey(stage: Pick<OfflineStageItem, 'stage' | 'code'>) {

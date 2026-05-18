@@ -13,8 +13,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://192.168.18.42:
 
 const syncClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 0,
 });
+
+type SyncOfflineSnapshotResult = {
+  snapshot?: Record<string, unknown>;
+  syncedAt?: string;
+} | null;
+
+let syncInFlight: Promise<SyncOfflineSnapshotResult> | null = null;
 
 syncClient.interceptors.request.use((config) => {
   const token = getStoredToken();
@@ -38,17 +45,18 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export async function syncOfflineSnapshot() {
+async function runOfflineSnapshotSync(): Promise<SyncOfflineSnapshotResult> {
   if (!getOfflineSyncStatus().pending) {
     return null;
   }
 
   try {
     const formData = await buildOfflineSyncFormData();
-    const { data } = await syncClient.post<{
-      snapshot?: Record<string, unknown>;
-      syncedAt?: string;
-    }>('/sync/snapshot', formData);
+    const { data } =
+      await syncClient.post<Exclude<SyncOfflineSnapshotResult, null>>(
+        '/sync/snapshot',
+        formData,
+      );
 
     if (data.snapshot) {
       await applySyncedSnapshot(data.snapshot);
@@ -62,4 +70,16 @@ export async function syncOfflineSnapshot() {
 
     throw new Error(getErrorMessage(error, 'Unable to sync offline data.'));
   }
+}
+
+export async function syncOfflineSnapshot() {
+  if (syncInFlight) {
+    return syncInFlight;
+  }
+
+  syncInFlight = runOfflineSnapshotSync().finally(() => {
+    syncInFlight = null;
+  });
+
+  return syncInFlight;
 }

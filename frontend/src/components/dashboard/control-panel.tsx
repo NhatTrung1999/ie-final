@@ -136,11 +136,11 @@ export function ControlPanel({
       .then((session) => {
         if (isCancelled) return;
 
-        setElapsed(session?.elapsed ?? 0);
+        setElapsed(0);
         setNva(session?.nva ?? null);
         setVa(session?.va ?? null);
         setSkip(session?.skip ?? null);
-        setSegmentStart(session?.segmentStart ?? 0);
+        setSegmentStart(0);
         setSessionError('');
       })
       .catch((error) => {

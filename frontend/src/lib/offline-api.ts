@@ -2591,29 +2591,14 @@ async function buildWorkbookBlob(
   db: OfflineDb,
   body: OfflineRequestBody,
 ) {
-  const workbook = new ExcelJS.Workbook();
   const rowIds = Array.isArray(body.rowIds) ? body.rowIds.map(String) : [];
-  const rows = rowIds.length > 0 ? db.tableRows.filter((row) => rowIds.includes(row.id)) : db.tableRows;
 
   if (path === '/table-ct/export-lsa') {
-    const sheet = workbook.addWorksheet('LSA Summary');
-    sheet.addRow(['Stage', 'Stage Item', 'Row', 'Part Name', 'Machine Type', 'Confirmed', 'Done', 'NVA Total', 'VA Total']);
-    rows.forEach((row) => {
-      sheet.addRow([
-        String(body.stage ?? 'ALL'),
-        String(body.stageItemId ?? 'ALL'),
-        row.no,
-        row.partName,
-        row.machineType,
-        row.confirmed ? 'Yes' : 'No',
-        row.done ? 'Yes' : 'No',
-        sumValues(row.nvaValues).toFixed(2),
-        sumValues(row.vaValues).toFixed(2),
-      ]);
-    });
-    return buildExcelBlob(await workbook.xlsx.writeBuffer());
+    return buildOfflineLsaWorkbookBlob(db, body);
   }
 
+  const workbook = new ExcelJS.Workbook();
+  const rows = rowIds.length > 0 ? db.tableRows.filter((row) => rowIds.includes(row.id)) : db.tableRows;
   const sheet = workbook.addWorksheet('TableCT');
   sheet.addRow(['Stage', 'Stage Item', 'No', 'Part Name', 'Machine Type', 'Confirmed', 'Done']);
   rows.forEach((row) => {
@@ -2628,6 +2613,562 @@ async function buildWorkbookBlob(
     ]);
   });
   return buildExcelBlob(await workbook.xlsx.writeBuffer());
+}
+
+async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBody) {
+  const filteredStageItemIds = Array.isArray(body.filteredStageItemIds)
+    ? body.filteredStageItemIds.map(String).filter(Boolean)
+    : [];
+  const selectedStageItemId = typeof body.stageItemId === 'string' ? body.stageItemId.trim() : '';
+  const rows = (
+    filteredStageItemIds.length > 0
+      ? db.tableRows.filter((row) => row.stageItemId && filteredStageItemIds.includes(row.stageItemId))
+      : db.tableRows
+  ).sort((a, b) => {
+    const stageDiff = getLsaStageSortIndex(a.stage) - getLsaStageSortIndex(b.stage);
+    if (stageDiff !== 0) return stageDiff;
+
+    const sortOrderDiff = a.sortOrder - b.sortOrder;
+    if (sortOrderDiff !== 0) return sortOrderDiff;
+
+    return a.no.localeCompare(b.no);
+  });
+
+  if (rows.length === 0) {
+    throw new Error('No table rows were found to export.');
+  }
+
+  const workbook = await loadOfflineLsaTemplateWorkbook();
+  workbook.calcProperties.fullCalcOnLoad = true;
+
+  const worksheet = workbook.getWorksheet('LSA') ?? workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('LSA template sheet is missing.');
+  }
+
+  const primaryRow =
+    rows.find((row) => row.stageItemId === selectedStageItemId) ?? rows[0];
+  const primaryStageItem = primaryRow.stageItemId
+    ? db.stages.find((item) => item.id === primaryRow.stageItemId)
+    : undefined;
+  const estimateOutputPairs = readFiniteNumber(body.estimateOutputPairs, 0);
+  const workingTimeSeconds = readFiniteNumber(body.workingTimeSeconds, 27000);
+  const lossRateByMachineType = new Map(
+    db.machineTypes.map((item) => [item.label, parseLossRate(item.loss ?? '')]),
+  );
+  const labelsByMachineType = new Map(
+    db.machineTypes.map((item) => [item.label, { labelCn: item.labelCn ?? null, labelVn: item.labelVn ?? null }]),
+  );
+
+  worksheet.getCell('B2').value =
+    primaryStageItem?.article || primaryStageItem?.code || primaryRow.no;
+  worksheet.getCell('B3').value = primaryStageItem?.cutDie ?? '';
+  worksheet.getCell('B4').value = '';
+  worksheet.getCell('G3').value = estimateOutputPairs;
+  worksheet.getCell('G4').value = '8 hours';
+  worksheet.getCell('G5').value = estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
+
+  clearLsaSections(worksheet);
+  const sectionRows = groupLsaRowsBySection(rows);
+  populateLsaDetailSection(
+    worksheet,
+    sectionRows.CUTTING,
+    'CUTTING',
+    lossRateByMachineType,
+    labelsByMachineType,
+    workingTimeSeconds,
+    estimateOutputPairs,
+  );
+  populateLsaRemarkSummary(worksheet, sectionRows.CUTTING, 'CUTTING', labelsByMachineType);
+  populateLsaDetailSection(
+    worksheet,
+    sectionRows.STITCHING,
+    'STITCHING',
+    lossRateByMachineType,
+    labelsByMachineType,
+    workingTimeSeconds,
+    estimateOutputPairs,
+  );
+  populateLsaRemarkSummary(worksheet, sectionRows.STITCHING, 'STITCHING', labelsByMachineType);
+  populateLsaDetailSection(
+    worksheet,
+    sectionRows.ASSEMBLY,
+    'ASSEMBLY',
+    lossRateByMachineType,
+    labelsByMachineType,
+    workingTimeSeconds,
+    estimateOutputPairs,
+  );
+  populateLsaRemarkSummary(worksheet, sectionRows.ASSEMBLY, 'ASSEMBLY', labelsByMachineType);
+  finalizeLsaComputedWorkbook(worksheet, workingTimeSeconds, estimateOutputPairs);
+  ensureLsaVisibleTextColor(worksheet);
+  setLsaSummaryLabelColor(worksheet);
+  hideLsaColumnDisplayValues(worksheet);
+
+  return buildExcelBlob(await workbook.xlsx.writeBuffer());
+}
+
+async function loadOfflineLsaTemplateWorkbook() {
+  const workbook = new ExcelJS.Workbook();
+  const templateUrls = [
+    '/templates/excel-lsa-template.xlsx',
+    '/templates/FILE%20M%E1%BA%AAU%20CHIA%20M%E1%BB%A8C%20LSA%201%20CHUY%E1%BB%80N.xlsx',
+  ];
+
+  for (const templateUrl of templateUrls) {
+    try {
+      const response = await getCachedTemplateResponse(templateUrl);
+      if (!response.ok) {
+        continue;
+      }
+
+      await workbook.xlsx.load(await response.arrayBuffer());
+      return workbook;
+    } catch {
+      // Try the next bundled template name.
+    }
+  }
+
+  throw new Error('Unable to load LSA template.');
+}
+
+async function getCachedTemplateResponse(templateUrl: string) {
+  if (typeof caches !== 'undefined') {
+    const cached = await caches.match(templateUrl);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  return fetch(templateUrl);
+}
+
+type OfflineLsaRow = OfflineTableRow | ReturnType<typeof createBlankLsaRow>;
+
+const LSA_TEMPLATE_SECTIONS = [
+  { startRow: 9, endRow: 34 },
+  { startRow: 38, endRow: 85 },
+  { startRow: 89, endRow: 122 },
+];
+
+const LSA_TEMPLATE_SECTION_BY_STAGE: Record<string, { startRow: number; endRow: number }> = {
+  CUTTING: LSA_TEMPLATE_SECTIONS[0],
+  STITCHING: LSA_TEMPLATE_SECTIONS[1],
+  ASSEMBLY: LSA_TEMPLATE_SECTIONS[2],
+  STOCK: LSA_TEMPLATE_SECTIONS[2],
+};
+
+const LSA_REMARK_SECTION_BY_STAGE: Record<
+  string,
+  { labelStart: number; labelCount: number; totalRow: number }
+> = {
+  CUTTING: { labelStart: 9, labelCount: 6, totalRow: 15 },
+  STITCHING: { labelStart: 38, labelCount: 19, totalRow: 57 },
+  ASSEMBLY: { labelStart: 90, labelCount: 13, totalRow: 103 },
+  STOCK: { labelStart: 90, labelCount: 13, totalRow: 103 },
+};
+
+function populateLsaDetailSection(
+  worksheet: ExcelJS.Worksheet,
+  rows: OfflineLsaRow[],
+  stage: string,
+  lossRateByMachineType: Map<string, number>,
+  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+  workingTimeSeconds: number,
+  estimateOutputPairs: number,
+) {
+  const section = LSA_TEMPLATE_SECTION_BY_STAGE[stage];
+  if (!section) {
+    throw new Error(`Unsupported LSA stage "${stage}".`);
+  }
+
+  const capacity = section.endRow - section.startRow + 1;
+  if (rows.length > capacity) {
+    throw new Error(
+      `The ${stage} LSA template supports up to ${capacity} rows, but ${rows.length} rows were selected.`,
+    );
+  }
+
+  const g5Value = estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
+  const sectionTotals = { c: 0, f: 0, h: 0, g: 0, i: 0, j: 0, l: 0 };
+
+  for (let index = 0; index < capacity; index += 1) {
+    const rowNumber = section.startRow + index;
+    const row = rows[index] ?? createBlankLsaRow();
+    const metrics = fillLsaInputRow(
+      worksheet,
+      rowNumber,
+      row,
+      lossRateByMachineType,
+      labelsByMachineType,
+      g5Value,
+    );
+
+    sectionTotals.c += metrics.c;
+    sectionTotals.f += metrics.f;
+    sectionTotals.h += metrics.h;
+    sectionTotals.g += metrics.g;
+    sectionTotals.i += metrics.i;
+    sectionTotals.j += metrics.j;
+    sectionTotals.l += metrics.l;
+  }
+
+  writeLsaSectionTotalRow(worksheet, stage, sectionTotals, workingTimeSeconds);
+}
+
+function clearLsaInputRow(worksheet: ExcelJS.Worksheet, rowNumber: number) {
+  worksheet.getCell(`A${rowNumber}`).value = '';
+  worksheet.getCell(`B${rowNumber}`).value = '';
+  worksheet.getCell(`C${rowNumber}`).value = 0;
+  worksheet.getCell(`D${rowNumber}`).value = 0;
+  worksheet.getCell(`E${rowNumber}`).value = 0;
+  worksheet.getCell(`J${rowNumber}`).value = '';
+  worksheet.getCell(`M${rowNumber}`).value = '';
+  ensureLsaInputRowBorders(worksheet, rowNumber);
+}
+
+function clearLsaSections(worksheet: ExcelJS.Worksheet) {
+  for (const templateSection of LSA_TEMPLATE_SECTIONS) {
+    for (
+      let rowNumber = templateSection.startRow;
+      rowNumber <= templateSection.endRow;
+      rowNumber += 1
+    ) {
+      clearLsaInputRow(worksheet, rowNumber);
+    }
+  }
+}
+
+function fillLsaInputRow(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  row: OfflineLsaRow,
+  lossRateByMachineType: Map<string, number>,
+  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+  g5Value: number,
+) {
+  const lossRate = lossRateByMachineType.get(row.machineType) ?? 0;
+  const machineLabel = getLsaMachineLabel(row.machineType, labelsByMachineType);
+  const cValue = sumValues(row.vaValues);
+  const dValue = sumValues(row.nvaValues);
+  const eValue = lossRate;
+  const fValue = (cValue + dValue) * (1 + eValue);
+  const gValue = g5Value > 0 ? fValue / g5Value : 0;
+  const hValue = gValue;
+  const lValue = roundLsaOutputValue(hValue);
+  const iValue = lValue > 0 ? fValue / lValue : 0;
+  const kValue = fValue > 0 ? 3600 / fValue : 0;
+
+  worksheet.getCell(`A${rowNumber}`).value = row.no;
+  worksheet.getCell(`B${rowNumber}`).value = row.partName;
+  worksheet.getCell(`C${rowNumber}`).value = cValue;
+  worksheet.getCell(`D${rowNumber}`).value = dValue;
+  worksheet.getCell(`E${rowNumber}`).value = eValue;
+  worksheet.getCell(`F${rowNumber}`).value = fValue;
+  worksheet.getCell(`G${rowNumber}`).value = gValue;
+  worksheet.getCell(`H${rowNumber}`).value = hValue;
+  worksheet.getCell(`I${rowNumber}`).value = iValue;
+  worksheet.getCell(`J${rowNumber}`).value = '';
+  worksheet.getCell(`K${rowNumber}`).value = kValue;
+  worksheet.getCell(`L${rowNumber}`).value = lValue;
+  worksheet.getCell(`M${rowNumber}`).value = machineLabel;
+  worksheet.getCell(`N${rowNumber}`).value = g5Value;
+
+  ensureLsaInputRowBorders(worksheet, rowNumber);
+
+  return {
+    c: cValue,
+    d: dValue,
+    e: eValue,
+    f: fValue,
+    g: gValue,
+    h: hValue,
+    i: iValue,
+    j: 0,
+    k: kValue,
+    l: lValue,
+  };
+}
+
+function getLsaMachineLabel(
+  machineType: string,
+  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+) {
+  if (machineType === 'Select..') {
+    return '';
+  }
+
+  const labels = labelsByMachineType.get(machineType);
+  return [labels?.labelVn, labels?.labelCn].filter(Boolean).join('-') || machineType;
+}
+
+function roundLsaOutputValue(value: number) {
+  const truncated = Math.trunc(value);
+  if (Math.abs(value - truncated) >= 0.25) {
+    return Math.ceil(value);
+  }
+
+  return Math.round(value);
+}
+
+function finalizeLsaComputedWorkbook(
+  worksheet: ExcelJS.Worksheet,
+  workingTimeSeconds: number,
+  estimateOutputPairs: number,
+) {
+  const cuttingF = readNumericCell(worksheet, 'F35');
+  const stitchingF = readNumericCell(worksheet, 'F86');
+  const assemblyF = readNumericCell(worksheet, 'F123');
+  const overallF = cuttingF + stitchingF + assemblyF;
+
+  worksheet.getCell('C125').value =
+    readNumericCell(worksheet, 'C35') +
+    readNumericCell(worksheet, 'C86') +
+    readNumericCell(worksheet, 'C123');
+  worksheet.getCell('F125').value = overallF;
+  worksheet.getCell('I125').value =
+    readNumericCell(worksheet, 'I35') +
+    readNumericCell(worksheet, 'I86') +
+    readNumericCell(worksheet, 'I123');
+  worksheet.getCell('J125').value = readNumericCell(worksheet, 'J123') + readNumericCell(worksheet, 'J86');
+  worksheet.getCell('L125').value =
+    readNumericCell(worksheet, 'L35') +
+    readNumericCell(worksheet, 'L86') +
+    readNumericCell(worksheet, 'L123');
+
+  worksheet.getCell('P2').value = cuttingF;
+  worksheet.getCell('P3').value = stitchingF;
+  worksheet.getCell('P4').value = cuttingF + stitchingF;
+  worksheet.getCell('P5').value = assemblyF;
+  worksheet.getCell('P6').value = cuttingF + stitchingF + assemblyF;
+
+  worksheet.getCell('Q2').value = cuttingF > 0 ? workingTimeSeconds / cuttingF : 0;
+  worksheet.getCell('Q3').value = stitchingF > 0 ? workingTimeSeconds / stitchingF : 0;
+  worksheet.getCell('Q4').value = cuttingF + stitchingF > 0 ? workingTimeSeconds / (cuttingF + stitchingF) : 0;
+  worksheet.getCell('Q5').value = assemblyF > 0 ? workingTimeSeconds / assemblyF : 0;
+  worksheet.getCell('Q6').value =
+    cuttingF + stitchingF + assemblyF > 0
+      ? workingTimeSeconds / (cuttingF + stitchingF + assemblyF)
+      : 0;
+
+  worksheet.getCell('F36').value = cuttingF > 0 ? workingTimeSeconds / cuttingF : 0;
+  worksheet.getCell('F87').value = stitchingF > 0 ? workingTimeSeconds / stitchingF : 0;
+  worksheet.getCell('F124').value = assemblyF > 0 ? workingTimeSeconds / assemblyF : 0;
+  worksheet.getCell('F126').value = overallF > 0 ? workingTimeSeconds / overallF : 0;
+
+  worksheet.getCell('B5').value = readNumericCell(worksheet, 'F126') / 7.5;
+  worksheet.getCell('G5').value = estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
+}
+
+function readNumericCell(worksheet: ExcelJS.Worksheet, address: string) {
+  const value = worksheet.getCell(address).value;
+  return typeof value === 'number' ? value : Number(value) || 0;
+}
+
+function setLsaSummaryLabelColor(worksheet: ExcelJS.Worksheet) {
+  for (const rowNumber of [35, 86, 123, 125]) {
+    for (let colNumber = 2; colNumber <= 17; colNumber += 1) {
+      const cell = worksheet.getCell(rowNumber, colNumber);
+      if (cell.value == null || cell.value === '') {
+        continue;
+      }
+
+      cell.font = {
+        ...cell.font,
+        color: { argb: 'FFFF0000' },
+      };
+    }
+  }
+}
+
+function hideLsaColumnDisplayValues(worksheet: ExcelJS.Worksheet) {
+  for (const section of LSA_TEMPLATE_SECTIONS) {
+    for (let rowNumber = section.startRow; rowNumber <= section.endRow; rowNumber += 1) {
+      worksheet.getCell(`N${rowNumber}`).numFmt = ';;;';
+    }
+  }
+}
+
+function ensureLsaVisibleTextColor(worksheet: ExcelJS.Worksheet) {
+  for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    for (let colNumber = 1; colNumber <= worksheet.columnCount; colNumber += 1) {
+      const cell = worksheet.getCell(rowNumber, colNumber);
+      if (cell.value == null || cell.value === '') {
+        continue;
+      }
+
+      if (
+        typeof cell.value === 'object' &&
+        cell.value != null &&
+        'richText' in cell.value &&
+        Array.isArray(cell.value.richText)
+      ) {
+        cell.value = {
+          richText: cell.value.richText.map((part) => ({
+            ...part,
+            font: {
+              ...part.font,
+              color: { argb: 'FF000000' },
+            },
+          })),
+        };
+      }
+
+      cell.font = {
+        ...cell.font,
+        color: { argb: 'FF000000' },
+      };
+    }
+  }
+}
+
+function parseLossRate(value?: string) {
+  if (!value) {
+    return 0;
+  }
+
+  const normalized = value.trim().replace('%', '');
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+
+  return parsed > 1 ? parsed / 100 : parsed;
+}
+
+function ensureLsaInputRowBorders(worksheet: ExcelJS.Worksheet, rowNumber: number) {
+  for (let colNumber = 1; colNumber <= 13; colNumber += 1) {
+    worksheet.getCell(rowNumber, colNumber).border = {
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } },
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+    };
+  }
+}
+
+function populateLsaRemarkSummary(
+  worksheet: ExcelJS.Worksheet,
+  rows: OfflineLsaRow[],
+  stage: string,
+  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+) {
+  const section = LSA_REMARK_SECTION_BY_STAGE[stage];
+  if (!section) {
+    return;
+  }
+
+  const counts = new Map<string, number>();
+  const orderedLabels: string[] = [];
+
+  for (const row of rows) {
+    const label = getLsaMachineLabel(row.machineType, labelsByMachineType);
+    if (!label) {
+      continue;
+    }
+
+    if (!counts.has(label)) {
+      orderedLabels.push(label);
+    }
+
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  for (let index = 0; index < section.labelCount; index += 1) {
+    const rowNumber = section.labelStart + index;
+    worksheet.getCell(`O${rowNumber}`).value = '';
+    worksheet.getCell(`Q${rowNumber}`).value = 0;
+  }
+
+  orderedLabels.slice(0, section.labelCount).forEach((label, index) => {
+    const rowNumber = section.labelStart + index;
+    worksheet.getCell(`O${rowNumber}`).value = label;
+    worksheet.getCell(`Q${rowNumber}`).value = counts.get(label) ?? 0;
+  });
+
+  worksheet.getCell(`O${section.totalRow}`).value = 'TOTAL';
+  worksheet.getCell(`Q${section.totalRow}`).value = orderedLabels.reduce(
+    (sum, label) => sum + (counts.get(label) ?? 0),
+    0,
+  );
+}
+
+function createBlankLsaRow() {
+  return {
+    id: '',
+    stageItemId: null,
+    stage: '',
+    no: '',
+    partName: '',
+    nvaValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    vaValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    machineType: 'Select..',
+    confirmed: false,
+    done: false,
+    sortOrder: 0,
+  };
+}
+
+function writeLsaSectionTotalRow(
+  worksheet: ExcelJS.Worksheet,
+  stage: string,
+  totals: {
+    c: number;
+    f: number;
+    h: number;
+    g: number;
+    i: number;
+    j: number;
+    l: number;
+  },
+  workingTimeSeconds: number,
+) {
+  const section = LSA_TEMPLATE_SECTION_BY_STAGE[stage];
+  if (!section) {
+    throw new Error(`Unsupported LSA stage "${stage}".`);
+  }
+
+  const totalRow = section.endRow + 1;
+  const totalI = stage === 'ASSEMBLY' ? totals.g : totals.h;
+  const ratioRow = totalRow + 1;
+
+  worksheet.getCell(`C${totalRow}`).value = totals.c;
+  worksheet.getCell(`F${totalRow}`).value = totals.f;
+  worksheet.getCell(`I${totalRow}`).value = totalI;
+  if (stage !== 'CUTTING') {
+    worksheet.getCell(`J${totalRow}`).value = totals.j;
+  }
+  worksheet.getCell(`L${totalRow}`).value = totals.l;
+  worksheet.getCell(`F${ratioRow}`).value = totals.f > 0 ? workingTimeSeconds / totals.f : 0;
+}
+
+function groupLsaRowsBySection(rows: OfflineTableRow[]) {
+  return {
+    CUTTING: rows.filter((row) => row.stage === 'CUTTING'),
+    STITCHING: rows.filter((row) => row.stage === 'STITCHING'),
+    ASSEMBLY: rows.filter((row) => row.stage === 'ASSEMBLY' || row.stage === 'STOCK'),
+  };
+}
+
+function getLsaStageSortIndex(stage: string) {
+  switch (stage) {
+    case 'CUTTING':
+      return 0;
+    case 'STITCHING':
+      return 1;
+    case 'ASSEMBLY':
+      return 2;
+    case 'STOCK':
+      return 3;
+    default:
+      return 99;
+  }
+}
+
+function readFiniteNumber(value: unknown, fallback: number) {
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
 function buildExcelBlob(buffer: ExcelJS.Buffer) {

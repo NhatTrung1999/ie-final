@@ -1,5 +1,10 @@
-const CACHE_NAME = 'ie-video-ct-shell-v2';
-const PRECACHE_URLS = ['/', '/index.html', '/favicon.svg'];
+const CACHE_NAME = 'ie-video-ct-shell-v3';
+const PRECACHE_URLS = [
+  '/',
+  '/index.html',
+  '/favicon.svg',
+  '/templates/excel-lsa-template.xlsx',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

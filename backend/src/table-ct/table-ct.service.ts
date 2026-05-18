@@ -531,7 +531,6 @@ export class TableCtService implements OnModuleInit {
       return a.no.localeCompare(b.no);
     });
 
-    const normalizedStage = payload.stage?.trim().toUpperCase() || 'ALL';
     const primaryRow =
       orderedRows.find((row) => row.stageItemId === selectedStageItemId) ?? orderedRows[0];
     const primaryStageItem = primaryRow.stageItemId
@@ -574,8 +573,7 @@ export class TableCtService implements OnModuleInit {
     worksheet.getCell('B2').value =
       primaryStageItem?.article || primaryStageItem?.code || primaryRow.no;
     worksheet.getCell('B3').value = primaryStageItem?.cutDie ?? '';
-    worksheet.getCell('B4').value =
-      primaryStageItem?.season ?? primaryStageItem?.area ?? normalizedStage;
+    worksheet.getCell('B4').value = '';
     worksheet.getCell('G3').value = estimateOutputPairs;
     worksheet.getCell('G4').value = '8 hours';
     worksheet.getCell('G5').value = estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;

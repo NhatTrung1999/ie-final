@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+model User {
+  id           String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  username     String   @unique @db.NVarChar(100)
+  passwordHash String   @db.NVarChar(255)
+  displayName  String   @db.NVarChar(150)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("User")
+}
+
+model StageList {
+  id        String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  ownerUserId String? @db.UniqueIdentifier
+  code      String    @db.NVarChar(50)
+  name      String    @db.NVarChar(255)
+  season    String?   @db.NVarChar(100)
+  cutDie    String?   @db.NVarChar(100)
+  area      String?   @db.NVarChar(50)
+  article   String?   @db.NVarChar(255)
+  duration  String    @db.NVarChar(20)
+  mood      String    @db.NVarChar(20)
+  stage     String    @db.NVarChar(50)
+  filePath  String?   @db.NVarChar(500)
+  stageDate DateTime? @db.Date
+  sortOrder Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("StageList")
+}
+
+model StageCategory {
+  id        String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  value     String   @unique @db.NVarChar(50)
+  label     String   @db.NVarChar(100)
+  sortOrder Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("StageCategory")
+}
+
+model MachineType {
+  id         String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  department String   @db.NVarChar(50)
+  label      String   @db.NVarChar(255)
+  labelCn    String?  @db.NVarChar(255)
+  labelVn    String?  @db.NVarChar(255)
+  loss       String?  @db.NVarChar(50)
+  sortOrder  Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("MachineType")
+}
+
+model TableCT {
+  id          String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  stageItemId String?  @db.UniqueIdentifier
+  no          String   @db.NVarChar(50)
+  partName    String   @db.NVarChar(255)
+  stage       String   @db.NVarChar(50)
+  ct1         Float
+  ct2         Float
+  ct3         Float
+  ct4         Float
+  ct5         Float
+  ct6         Float
+  ct7         Float
+  ct8         Float
+  ct9         Float
+  ct10        Float
+  vaCt1       Float    @default(0)
+  vaCt2       Float    @default(0)
+  vaCt3       Float    @default(0)
+  vaCt4       Float    @default(0)
+  vaCt5       Float    @default(0)
+  vaCt6       Float    @default(0)
+  vaCt7       Float    @default(0)
+  vaCt8       Float    @default(0)
+  vaCt9       Float    @default(0)
+  vaCt10      Float    @default(0)
+  machineType String   @db.NVarChar(100)
+  confirmed   Boolean
+  done        Boolean  @default(false)
+  sortOrder   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("TableCT")
+}
+
+model HistoryEntry {
+  id          String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  stageItemId String?  @db.UniqueIdentifier
+  stageCode   String   @db.NVarChar(50)
+  startTime   Float
+  endTime     Float
+  type        String   @db.NVarChar(20)
+  value       Float
+  committed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("HistoryPlayback")
+}
+
+model ControlSession {
+  id           String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  stageItemId  String?  @unique @db.UniqueIdentifier
+  stageCode    String   @db.NVarChar(50)
+  elapsed      Float
+  isRunning    Boolean
+  segmentStart Float
+  nva          Float?
+  va           Float?
+  skip         Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("ControlPanel")
+}

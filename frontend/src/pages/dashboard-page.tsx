@@ -27,8 +27,6 @@ import { reorderTableCtRows } from '@/services/table-ct';
 import { syncOfflineSnapshot } from '@/services/sync';
 import {
   buildOfflineShareBundle,
-  cacheStageTabsFromStages,
-  getCachedStageTabs,
   restoreOfflineShareBundle,
 } from '@/lib/offline-api';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -54,6 +52,7 @@ import type { HistoryItem } from '@/types/dashboard';
 type DashboardPageProps = {
   displayName: string;
   subtitle: string;
+  role: string;
   onSignOut: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
@@ -94,13 +93,14 @@ function sortRowsByStageItems(rows: CtRow[], items: StageItem[]) {
 export function DashboardPage({
   displayName,
   subtitle,
+  role,
   onSignOut,
   theme,
   onToggleTheme,
 }: DashboardPageProps) {
   const dispatch = useAppDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [stageTabs, setStageTabs] = useState<StageKey[]>(() => getCachedStageTabs());
+  const [stageTabs, setStageTabs] = useState<StageKey[]>([]);
   const {
     activeStage,
     orderedStageItems,
@@ -179,8 +179,27 @@ export function DashboardPage({
   };
 
   const refreshStageTabs = async () => {
+    const categories = await fetchStageCategories();
+    dispatch(setStageCategories(categories));
+
+    const categoryTabs = categories
+      .map((category) => category.value)
+      .filter((value): value is StageKey => value.trim().length > 0);
+
+    if (categoryTabs.length > 0) {
+      const nextTabs = Array.from(new Set(categoryTabs));
+      setStageTabs(nextTabs);
+      return nextTabs;
+    }
+
     const allStages = await fetchStages();
-    const nextTabs = cacheStageTabsFromStages(allStages);
+    const nextTabs = Array.from(
+      new Set(
+        allStages
+          .map((item) => item.stage)
+          .filter((value): value is StageKey => value.trim().length > 0),
+      ),
+    );
     setStageTabs(nextTabs);
     return nextTabs;
   };
@@ -636,6 +655,7 @@ export function DashboardPage({
             onSignOut={onSignOut}
             displayName={displayName}
             subtitle={subtitle}
+            role={role}
             theme={theme}
             onToggleTheme={onToggleTheme}
           />

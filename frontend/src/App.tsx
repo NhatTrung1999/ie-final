@@ -100,6 +100,7 @@ function App() {
               <DashboardPage
                 displayName={sessionUser.username}
                 subtitle={sessionUser.category}
+                role={sessionUser.role}
                 theme={theme}
                 onToggleTheme={() =>
                   setTheme((current) => (current === 'dark' ? 'light' : 'dark'))

@@ -7,12 +7,15 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  username     String   @unique @db.NVarChar(100)
-  passwordHash String   @db.NVarChar(255)
-  displayName  String   @db.NVarChar(150)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  username         String   @unique @db.NVarChar(100)
+  passwordHash     String   @db.NVarChar(255)
+  displayName      String   @db.NVarChar(150)
+  factory          String   @default("LYV") @db.NVarChar(50)
+  role             String   @default("user") @db.NVarChar(50)
+  refreshTokenHash String?  @db.NVarChar(255)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@map("User")
 }

@@ -7,6 +7,9 @@ export type AppUser = {
   username: string;
   passwordHash: string;
   displayName: string;
+  factory: string;
+  role: string;
+  refreshTokenHash: string | null;
 };
 
 @Injectable()
@@ -43,6 +46,8 @@ export class UsersService implements OnModuleInit {
     username: string;
     password: string;
     displayName: string;
+    factory?: string;
+    role?: string;
   }): Promise<AppUser> {
     await this.ensureAuthTable();
     return this.prismaService.user.create({
@@ -50,7 +55,17 @@ export class UsersService implements OnModuleInit {
         username: payload.username,
         passwordHash: hashPassword(payload.password),
         displayName: payload.displayName,
+        factory: normalizeFactory(payload.factory),
+        role: normalizeRole(payload.role),
       },
+    });
+  }
+
+  async setRefreshTokenHash(id: string, refreshTokenHash: string | null) {
+    await this.ensureAuthTable();
+    await this.prismaService.user.update({
+      where: { id },
+      data: { refreshTokenHash },
     });
   }
 
@@ -95,6 +110,9 @@ export class UsersService implements OnModuleInit {
           [username] NVARCHAR(100) NOT NULL,
           [passwordHash] NVARCHAR(255) NOT NULL,
           [displayName] NVARCHAR(150) NOT NULL,
+          [factory] NVARCHAR(50) NOT NULL CONSTRAINT [User_factory_df] DEFAULT N'LYV',
+          [role] NVARCHAR(50) NOT NULL CONSTRAINT [User_role_df] DEFAULT N'user',
+          [refreshTokenHash] NVARCHAR(255) NULL,
           [createdAt] DATETIME2 NOT NULL CONSTRAINT [User_createdAt_df] DEFAULT SYSUTCDATETIME(),
           [updatedAt] DATETIME2 NOT NULL CONSTRAINT [User_updatedAt_df] DEFAULT SYSUTCDATETIME(),
           CONSTRAINT [User_pkey] PRIMARY KEY ([id]),
@@ -113,6 +131,32 @@ export class UsersService implements OnModuleInit {
         ALTER TABLE [dbo].[User]
         ADD [updatedAt] DATETIME2 NOT NULL CONSTRAINT [User_updatedAt_df] DEFAULT SYSUTCDATETIME();
       END
+
+      IF COL_LENGTH('dbo.[User]', 'factory') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[User]
+        ADD [factory] NVARCHAR(50) NOT NULL CONSTRAINT [User_factory_df] DEFAULT N'LYV';
+      END
+
+      UPDATE [dbo].[User]
+      SET [factory] = N'LYV'
+      WHERE [factory] IS NULL OR UPPER(LTRIM(RTRIM([factory]))) NOT IN (N'LYV', N'LHG', N'LVL', N'LYM');
+
+      UPDATE [dbo].[User]
+      SET [factory] = UPPER(LTRIM(RTRIM([factory])))
+      WHERE [factory] IS NOT NULL;
+
+      IF COL_LENGTH('dbo.[User]', 'refreshTokenHash') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[User]
+        ADD [refreshTokenHash] NVARCHAR(255) NULL;
+      END
+
+      IF COL_LENGTH('dbo.[User]', 'role') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[User]
+        ADD [role] NVARCHAR(50) NOT NULL CONSTRAINT [User_role_df] DEFAULT N'user';
+      END
     `);
   }
 
@@ -127,6 +171,8 @@ export class UsersService implements OnModuleInit {
         data: {
           passwordHash: hashPassword('test'),
           displayName: 'Admin',
+          factory: normalizeFactory(adminUser.factory),
+          role: 'admin',
         },
       });
       return;
@@ -143,6 +189,8 @@ export class UsersService implements OnModuleInit {
           username: 'admin',
           passwordHash: hashPassword('test'),
           displayName: 'Admin',
+          factory: normalizeFactory(legacyAdministrator.factory),
+          role: 'admin',
         },
       });
       return;
@@ -153,7 +201,20 @@ export class UsersService implements OnModuleInit {
         username: 'admin',
         passwordHash: hashPassword('test'),
         displayName: 'Admin',
+        factory: 'LYV',
+        role: 'admin',
       },
     });
   }
+}
+
+function normalizeRole(role?: string) {
+  return role?.trim().toLowerCase() === 'admin' ? 'admin' : 'user';
+}
+
+function normalizeFactory(factory?: string) {
+  const normalized = factory?.trim().toUpperCase();
+  return normalized && ['LYV', 'LHG', 'LVL', 'LYM'].includes(normalized)
+    ? normalized
+    : 'LYV';
 }

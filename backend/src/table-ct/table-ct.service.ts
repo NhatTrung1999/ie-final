@@ -1470,6 +1470,7 @@ const LSA_TEMPLATE_SECTION_BY_STAGE: Record<string, { startRow: number; endRow: 
   STITCHING: LSA_TEMPLATE_SECTIONS[1],
   ASSEMBLY: LSA_TEMPLATE_SECTIONS[2],
   STOCK: LSA_TEMPLATE_SECTIONS[2],
+  STOCKFITTING: LSA_TEMPLATE_SECTIONS[2],
 };
 
 function applyLsaWorkingTimeFormulas(
@@ -1847,7 +1848,9 @@ function groupLsaRowsBySection(rows: ReturnType<TableCtService['mapRow']>[]) {
   return {
     CUTTING: rows.filter((row) => row.stage === 'CUTTING'),
     STITCHING: rows.filter((row) => row.stage === 'STITCHING'),
-    ASSEMBLY: rows.filter((row) => row.stage === 'ASSEMBLY' || row.stage === 'STOCK'),
+    ASSEMBLY: rows.filter(
+      (row) => row.stage === 'ASSEMBLY' || row.stage === 'STOCK' || row.stage === 'STOCKFITTING',
+    ),
   };
 }
 
@@ -1860,6 +1863,7 @@ function getLsaStageSortIndex(stage: string) {
     case 'ASSEMBLY':
       return 2;
     case 'STOCK':
+    case 'STOCKFITTING':
       return 3;
     default:
       return 99;
@@ -1874,6 +1878,7 @@ const LSA_REMARK_SECTION_BY_STAGE: Record<
   STITCHING: { labelStart: 38, labelEnd: 56, labelCount: 19, totalRow: 57 },
   ASSEMBLY: { labelStart: 90, labelEnd: 102, labelCount: 13, totalRow: 103 },
   STOCK: { labelStart: 90, labelEnd: 102, labelCount: 13, totalRow: 103 },
+  STOCKFITTING: { labelStart: 90, labelEnd: 102, labelCount: 13, totalRow: 103 },
 };
 
 function normalizeCategory(category?: string) {

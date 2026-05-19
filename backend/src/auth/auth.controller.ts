@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import type { LoginDto } from './dto/login.dto';
+import type { RefreshTokenDto } from './dto/refresh-token.dto';
 import type { RegisterDto } from './dto/register.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { AuthenticatedUser, JwtUserPayload } from './auth.types';
@@ -34,10 +35,21 @@ export class AuthController {
     return this.authService.signIn(request.user, request.body.category);
   }
 
-  @Public()
   @Post('register')
-  register(@Body() payload: RegisterDto) {
-    return this.authService.register(payload);
+  register(
+    @Body() payload: RegisterDto,
+    @Req()
+    request: Request & {
+      user: JwtUserPayload;
+    },
+  ) {
+    return this.authService.register(payload, request.user);
+  }
+
+  @Public()
+  @Post('refresh')
+  refresh(@Body() payload: RefreshTokenDto) {
+    return this.authService.refresh(payload.refreshToken);
   }
 
   @Get('me')
@@ -53,8 +65,13 @@ export class AuthController {
   }
 
   @Get('users')
-  getUsers() {
-    return this.authService.listUsers();
+  getUsers(
+    @Req()
+    request: Request & {
+      user: JwtUserPayload;
+    },
+  ) {
+    return this.authService.listUsers(request.user);
   }
 
   @Delete('users/:id')

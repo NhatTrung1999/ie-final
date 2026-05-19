@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client';
 import type { JwtUserPayload } from '../auth/auth.types';
 import { hashPassword } from '../users/password.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { ensureStageUploadDir, getStageVideoUrl, stageUploadDir } from '../stage/stage-upload.util';
+import { ensureStageUploadDir, getStageUploadDir, getStageVideoUrl } from '../stage/stage-upload.util';
 
 type SyncSnapshotRequest = {
   snapshotJson: string;
@@ -30,6 +30,8 @@ type SyncUser = {
   id: string;
   username: string;
   displayName: string;
+  factory?: string;
+  role?: string;
   password?: string;
 };
 
@@ -186,6 +188,8 @@ export class SyncService {
         for (const user of snapshot.users ?? []) {
           const username = user.username?.trim().toLowerCase();
           const displayName = user.displayName?.trim();
+          const factory = normalizeFactory(user.factory);
+          const role = normalizeRole(user.role);
           const password = user.password ?? '';
 
           if (!username || !displayName || !password) {
@@ -198,10 +202,14 @@ export class SyncService {
               id: isUuid(user.id) ? user.id : undefined,
               username,
               displayName,
+              factory,
+              role,
               passwordHash: hashPassword(password),
             },
             update: {
               displayName,
+              factory,
+              role,
               passwordHash: hashPassword(password),
             },
           });
@@ -660,6 +668,8 @@ export class SyncService {
         id: item.id,
         username: item.username,
         displayName: item.displayName,
+        factory: item.factory,
+        role: item.role,
       })),
       stageCategories: stageCategories.map((item) => ({
         id: item.id,
@@ -888,6 +898,7 @@ async function saveSyncVideoFile(
   stage?: SyncStageItem,
 ) {
   ensureStageUploadDir();
+  const stageUploadDir = getStageUploadDir();
 
   const extension = extname(file.originalname).toLowerCase() || '.mp4';
   const targetDir = stage
@@ -998,6 +1009,17 @@ function isUuid(value?: string | null) {
         value.trim(),
       ),
   );
+}
+
+function normalizeRole(role?: string) {
+  return role?.trim().toLowerCase() === 'admin' ? 'admin' : 'user';
+}
+
+function normalizeFactory(factory?: string) {
+  const normalized = factory?.trim().toUpperCase();
+  return normalized && ['LYV', 'LHG', 'LVL', 'LYM'].includes(normalized)
+    ? normalized
+    : 'LYV';
 }
 
 function safeParseJson(value: string | null) {

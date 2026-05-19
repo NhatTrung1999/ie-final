@@ -51,9 +51,11 @@ export const signIn = createAsyncThunk(
       const nextSessionUser = {
         username: result.user.displayName || result.user.username || payload.username,
         category: result.user.category || payload.category,
+        factory: result.user.factory || 'LYV',
+        role: result.user.role || 'user',
       };
 
-      persistSession(result.accessToken, nextSessionUser);
+      persistSession(result.accessToken, nextSessionUser, result.refreshToken);
 
       return nextSessionUser;
     } catch (error) {
@@ -71,7 +73,12 @@ const authSlice = createSlice({
     signOut(state) {
       clearStoredSession();
       state.isAuthenticated = false;
-      state.sessionUser = { username: 'Administrator', category: 'FF28' };
+      state.sessionUser = {
+        username: 'Administrator',
+        category: 'FF28',
+        factory: 'LYV',
+        role: 'user',
+      };
     },
   },
   extraReducers: (builder) => {

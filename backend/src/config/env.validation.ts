@@ -2,7 +2,9 @@ type EnvironmentVariables = {
   PORT?: string;
   FRONTEND_URL?: string;
   JWT_SECRET?: string;
+  JWT_REFRESH_SECRET?: string;
   DATABASE_URL?: string;
+  UPLOAD_ROOT_DIR?: string;
 };
 
 export function validate(config: EnvironmentVariables) {
@@ -24,6 +26,9 @@ export function validate(config: EnvironmentVariables) {
     PORT: String(port),
     FRONTEND_URL: config.FRONTEND_URL?.trim() || 'http://localhost:5173',
     JWT_SECRET: config.JWT_SECRET.trim(),
+    JWT_REFRESH_SECRET:
+      config.JWT_REFRESH_SECRET?.trim() || config.JWT_SECRET.trim(),
     DATABASE_URL: config.DATABASE_URL.trim(),
+    UPLOAD_ROOT_DIR: config.UPLOAD_ROOT_DIR?.trim() || undefined,
   };
 }

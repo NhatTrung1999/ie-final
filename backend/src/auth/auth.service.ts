@@ -7,18 +7,20 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UsersService } from '../users/users.service';
 import { DeleteLogService } from '../delete-log/delete-log.service';
-import { verifyPassword } from '../users/password.util';
+import { hashPassword, verifyPassword } from '../users/password.util';
 import { AuthenticatedUser, JwtUserPayload } from './auth.types';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
     private readonly usersService: UsersService,
     private readonly deleteLogService: DeleteLogService,
   ) {}
@@ -44,6 +46,8 @@ export class AuthService {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
+      factory: user.factory,
+      role: user.role,
     };
   }
 
@@ -54,27 +58,80 @@ export class AuthService {
       throw new UnauthorizedException('Category is required.');
     }
 
-    const accessToken = await this.jwtService.signAsync({
-      sub: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      category: normalizedCategory,
-    });
+    const tokens = await this.issueTokens(user, normalizedCategory);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         username: user.username,
         displayName: user.displayName,
         category: normalizedCategory,
+        factory: user.factory,
+        role: user.role,
       },
     };
   }
 
-  async register(payload: RegisterDto) {
+  async refresh(refreshToken: string) {
+    if (!refreshToken?.trim()) {
+      throw new UnauthorizedException('Refresh token is required.');
+    }
+
+    let payload: JwtUserPayload;
+
+    try {
+      payload = await this.jwtService.verifyAsync<JwtUserPayload>(refreshToken, {
+        secret: this.getRefreshTokenSecret(),
+      });
+    } catch {
+      throw new UnauthorizedException('Refresh token is invalid or expired.');
+    }
+
+    if (payload.tokenType !== 'refresh') {
+      throw new UnauthorizedException('Refresh token is invalid.');
+    }
+
+    const user = await this.usersService.findById(payload.sub);
+
+    if (
+      !user?.refreshTokenHash ||
+      !verifyPassword(refreshToken, user.refreshTokenHash)
+    ) {
+      throw new UnauthorizedException('Refresh token is invalid.');
+    }
+
+    const category = payload.category || 'LSA';
+    const tokens = await this.issueTokens(
+      {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        factory: user.factory,
+        role: user.role,
+      },
+      category,
+    );
+
+    return {
+      ...tokens,
+      user: {
+        username: user.username,
+        displayName: user.displayName,
+        category,
+        factory: user.factory,
+        role: user.role,
+      },
+    };
+  }
+
+  async register(payload: RegisterDto, actor: JwtUserPayload) {
+    this.ensureAdmin(actor);
+
     const username = payload.username?.trim().toLowerCase();
     const password = payload.password ?? '';
     const displayName = payload.displayName?.trim();
+    const factory = this.normalizeFactory(payload.factory);
+    const role = this.normalizeRole(payload.role);
 
     if (!username || !password || !displayName) {
       throw new BadRequestException(
@@ -92,6 +149,8 @@ export class AuthService {
       username,
       password,
       displayName,
+      factory,
+      role,
     });
 
     return {
@@ -99,11 +158,15 @@ export class AuthService {
         id: createdUser.id,
         username: createdUser.username,
         displayName: createdUser.displayName,
+        factory: createdUser.factory,
+        role: createdUser.role,
       },
     };
   }
 
-  async listUsers() {
+  async listUsers(actor: JwtUserPayload) {
+    this.ensureAdmin(actor);
+
     const users = await this.usersService.listUsers();
 
     return {
@@ -111,11 +174,15 @@ export class AuthService {
         id: user.id,
         username: user.username,
         displayName: user.displayName,
+        factory: user.factory,
+        role: user.role,
       })),
     };
   }
 
   async deleteUser(userId: string, actor: JwtUserPayload) {
+    this.ensureAdmin(actor);
+
     if (!userId?.trim()) {
       throw new BadRequestException('User id is invalid.');
     }
@@ -143,6 +210,8 @@ export class AuthService {
       metadata: {
         username: existingUser.username,
         displayName: existingUser.displayName,
+        factory: existingUser.factory,
+        role: existingUser.role,
       },
     });
 
@@ -159,5 +228,58 @@ export class AuthService {
     }
 
     return this.signIn(user, payload.category);
+  }
+
+  private async issueTokens(user: AuthenticatedUser, category: string) {
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      category,
+      factory: user.factory,
+      role: user.role,
+    };
+    const accessToken = await this.jwtService.signAsync(
+      { ...payload, tokenType: 'access' },
+      { expiresIn: '15m' },
+    );
+    const refreshToken = await this.jwtService.signAsync(
+      { ...payload, tokenType: 'refresh' },
+      {
+        secret: this.getRefreshTokenSecret(),
+        expiresIn: '30d',
+      },
+    );
+
+    await this.usersService.setRefreshTokenHash(
+      user.id,
+      hashPassword(refreshToken),
+    );
+
+    return { accessToken, refreshToken };
+  }
+
+  private getRefreshTokenSecret() {
+    return (
+      this.configService.get<string>('JWT_REFRESH_SECRET') ||
+      this.configService.getOrThrow<string>('JWT_SECRET')
+    );
+  }
+
+  private ensureAdmin(actor: JwtUserPayload) {
+    if (actor.role !== 'admin') {
+      throw new ForbiddenException('Administrator role is required.');
+    }
+  }
+
+  private normalizeRole(role?: string) {
+    return role?.trim().toLowerCase() === 'admin' ? 'admin' : 'user';
+  }
+
+  private normalizeFactory(factory?: string) {
+    const normalized = factory?.trim().toUpperCase();
+    return normalized && ['LYV', 'LHG', 'LVL', 'LYM'].includes(normalized)
+      ? normalized
+      : 'LYV';
   }
 }

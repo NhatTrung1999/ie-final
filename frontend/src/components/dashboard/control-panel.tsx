@@ -669,18 +669,18 @@ export function ControlPanel({
       </div>
 
       {isCuttingModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-92 overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.18)]">
-            <div className="border-b border-slate-100 px-4 py-3.5 sm:px-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-92 overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_22px_64px_rgba(0,0,0,0.42)]">
+            <div className="border-b border-slate-100 px-4 py-3.5 dark:border-slate-700 sm:px-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="h-4 w-1 rounded-full bg-linear-to-b from-blue-500 to-violet-500" />
-                    <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
                       LSA Cutting
                     </span>
                   </div>
-                  <h2 className="text-[19px] font-semibold tracking-tight text-slate-700">
+                  <h2 className="text-[19px] font-semibold tracking-tight text-slate-700 dark:text-slate-100">
                     Cutting Parameters
                   </h2>
                 </div>
@@ -690,7 +690,7 @@ export function ControlPanel({
                     setIsCuttingModalOpen(false);
                     setCuttingModalError('');
                   }}
-                  className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                  className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 >
                   <X className="h-4.5 w-4.5" />
                 </button>
@@ -700,7 +700,7 @@ export function ControlPanel({
             <div className="space-y-3.5 px-4 py-4 sm:px-5">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="block space-y-1.5">
-                  <span className="text-[13px] font-medium text-slate-700">
+                  <span className="text-[13px] font-medium text-slate-700 dark:text-slate-300">
                     Pieces
                   </span>
                   <input
@@ -709,12 +709,12 @@ export function ControlPanel({
                     value={piecesInput}
                     onChange={(event) => setPiecesInput(event.target.value)}
                     placeholder="Pieces"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-50"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:ring-blue-950/40"
                   />
                 </label>
 
                 <label className="block space-y-1.5">
-                  <span className="text-[13px] font-medium text-slate-700">
+                  <span className="text-[13px] font-medium text-slate-700 dark:text-slate-300">
                     Layers
                   </span>
                   <input
@@ -723,13 +723,13 @@ export function ControlPanel({
                     value={layersInput}
                     onChange={(event) => setLayersInput(event.target.value)}
                     placeholder="Layers"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-50"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:ring-blue-950/40"
                   />
                 </label>
               </div>
 
               {cuttingModalError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-500">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-500 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300">
                   {cuttingModalError}
                 </div>
               ) : null}
@@ -738,7 +738,7 @@ export function ControlPanel({
                 <button
                   type="button"
                   onClick={handleCuttingModalDone}
-                  className="h-10 rounded-xl bg-linear-to-r from-emerald-500 to-emerald-600 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.22)] transition hover:from-emerald-600 hover:to-emerald-700"
+                  className="h-10 rounded-xl bg-linear-to-r from-emerald-500 to-emerald-600 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.22)] transition hover:from-emerald-600 hover:to-emerald-700 dark:from-emerald-600 dark:to-emerald-500 dark:hover:from-emerald-500 dark:hover:to-emerald-400"
                 >
                   Done
                 </button>
@@ -748,7 +748,7 @@ export function ControlPanel({
                     setIsCuttingModalOpen(false);
                     setCuttingModalError('');
                   }}
-                  className="h-10 rounded-xl bg-linear-to-r from-rose-500 to-red-500 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(239,68,68,0.2)] transition hover:from-rose-600 hover:to-red-600"
+                  className="h-10 rounded-xl bg-linear-to-r from-rose-500 to-red-500 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(239,68,68,0.2)] transition hover:from-rose-600 hover:to-red-600 dark:from-red-600 dark:to-rose-600 dark:hover:from-red-500 dark:hover:to-rose-500"
                 >
                   Cancel
                 </button>

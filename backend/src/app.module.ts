@@ -16,9 +16,14 @@ import { SyncModule } from './sync/sync.module';
 import { TableCtModule } from './table-ct/table-ct.module';
 import { UsersModule } from './users/users.module';
 import { validate } from './config/env.validation';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname,'..', '..', 'frontend', 'dist'),
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',

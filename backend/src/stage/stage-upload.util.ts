@@ -18,9 +18,13 @@ function sanitizePathSegment(value: string | undefined, fallback: string) {
   return normalized || fallback;
 }
 
-export const stageUploadDir = join(process.cwd(), 'uploads');
+export function getStageUploadDir() {
+  return process.env.UPLOAD_ROOT_DIR?.trim() || join(process.cwd(), 'uploads');
+}
 
 export function ensureStageUploadDir() {
+  const stageUploadDir = getStageUploadDir();
+
   if (!existsSync(stageUploadDir)) {
     mkdirSync(stageUploadDir, { recursive: true });
   }
@@ -33,6 +37,7 @@ function createStageUploadDirectory(req: Request) {
   const stageSegment = sanitizePathSegment(body.stageCode, 'unknown-stage');
   const areaSegment = sanitizePathSegment(body.area, 'unknown-area');
   const articleSegment = sanitizePathSegment(body.article, 'unknown-article');
+  const stageUploadDir = getStageUploadDir();
 
   const directory = join(
     stageUploadDir,
@@ -56,7 +61,7 @@ function createUploadFileName(originalName: string) {
 }
 
 export function getStageVideoUrl(filePath: string) {
-  const relativePath = relative(join(process.cwd(), 'uploads'), filePath)
+  const relativePath = relative(getStageUploadDir(), filePath)
     .split('\\')
     .join('/');
 

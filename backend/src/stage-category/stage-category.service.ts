@@ -9,7 +9,7 @@ const DEFAULT_STAGE_CATEGORIES = [
   { value: 'CUTTING', label: 'CUTTING', sortOrder: 1 },
   { value: 'STITCHING', label: 'STITCHING', sortOrder: 2 },
   { value: 'ASSEMBLY', label: 'ASSEMBLY', sortOrder: 3 },
-  { value: 'STOCK', label: 'STOCK', sortOrder: 4 },
+  { value: 'STOCKFITTING', label: 'STOCKFITTING', sortOrder: 4 },
 ] as const;
 
 @Injectable()
@@ -18,6 +18,7 @@ export class StageCategoryService implements OnModuleInit {
 
   async onModuleInit() {
     await this.ensureTable();
+    await this.migrateStockToStockfitting();
     await this.ensureSeedData();
   }
 
@@ -235,6 +236,45 @@ export class StageCategoryService implements OnModuleInit {
         sortOrder: item.sortOrder,
         isActive: true,
       })),
+    });
+  }
+
+  private async migrateStockToStockfitting() {
+    await this.prismaService.$transaction(async (tx) => {
+      await tx.stageList.updateMany({
+        where: { area: 'STOCK' },
+        data: { area: 'STOCKFITTING', stage: 'STOCKFITTING' },
+      });
+      await tx.stageList.updateMany({
+        where: { stage: 'STOCK' },
+        data: { stage: 'STOCKFITTING' },
+      });
+      await tx.tableCT.updateMany({
+        where: { stage: 'STOCK' },
+        data: { stage: 'STOCKFITTING' },
+      });
+
+      const stockCategory = await tx.stageCategory.findUnique({
+        where: { value: 'STOCK' },
+      });
+      const stockfittingCategory = await tx.stageCategory.findUnique({
+        where: { value: 'STOCKFITTING' },
+      });
+
+      if (stockCategory && !stockfittingCategory) {
+        await tx.stageCategory.update({
+          where: { id: stockCategory.id },
+          data: { value: 'STOCKFITTING', label: 'STOCKFITTING' },
+        });
+        return;
+      }
+
+      if (stockCategory && stockfittingCategory) {
+        await tx.stageCategory.update({
+          where: { id: stockCategory.id },
+          data: { isActive: false },
+        });
+      }
     });
   }
 

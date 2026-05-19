@@ -6,19 +6,19 @@ import { AppService } from './app.service';
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
-  @Public()
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
+  // @Public()
+  // @Get()
+  // getHello(): string {
+  //   return this.appService.getHello();
+  // }
 
-  @Public()
-  @Get('health')
-  getHealth() {
-    return {
-      ok: true,
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-    };
-  }
+  // @Public()
+  // @Get('health')
+  // getHealth() {
+  //   return {
+  //     ok: true,
+  //     status: 'ok',
+  //     timestamp: new Date().toISOString(),
+  //   };
+  // }
 }

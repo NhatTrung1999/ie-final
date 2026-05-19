@@ -220,23 +220,23 @@ export function UploadVideoModal({
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/25 px-3 py-6 backdrop-blur-[2px] sm:px-4 sm:py-10">
-      <div className="w-full max-w-[432px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_20px_64px_rgba(15,23,42,0.16)]">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
+    <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/45 px-3 py-6 backdrop-blur-[2px] sm:px-4 sm:py-10">
+      <div className="w-full max-w-[432px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_20px_64px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_22px_64px_rgba(0,0,0,0.42)]">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700 sm:px-5">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="h-4 w-1 rounded-full bg-gradient-to-b from-blue-500 to-violet-500" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
                 Add Stage Video
               </span>
             </div>
-            <h2 className="text-[20px] font-semibold tracking-tight text-slate-700">
+            <h2 className="text-[20px] font-semibold tracking-tight text-slate-700 dark:text-slate-100">
               Upload Video
             </h2>
           </div>
           <button
             onClick={handleCancel}
-            className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />
           </button>
@@ -257,10 +257,10 @@ export function UploadVideoModal({
                 }}
                 maxLength={100}
                 placeholder="ENTER YOUR SEASON..."
-                className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] uppercase text-slate-600 outline-none transition placeholder:text-slate-400 focus:ring-2 ${
+                className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] uppercase text-slate-600 outline-none transition placeholder:text-slate-400 focus:ring-2 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                   fieldErrors.season
-                    ? 'border-red-300 focus:border-red-400 focus:ring-red-50'
-                    : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50'
+                    ? 'border-red-300 focus:border-red-400 focus:ring-red-50 dark:border-red-900/70 dark:focus:border-red-500 dark:focus:ring-red-950/40'
+                    : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50 dark:border-slate-700 dark:focus:border-blue-500 dark:focus:ring-blue-950/40'
                 }`}
               />
             </Field>
@@ -272,10 +272,10 @@ export function UploadVideoModal({
                   setStageCode(e.target.value);
                   if (fieldErrors.stageCode) setFieldErrors((prev) => ({ ...prev, stageCode: '' }));
                 }}
-                className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] font-medium text-slate-700 outline-none transition focus:ring-2 ${
+                className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] font-medium text-slate-700 outline-none transition focus:ring-2 dark:bg-slate-900 dark:text-slate-100 ${
                   fieldErrors.stageCode
-                    ? 'border-red-300 focus:border-red-400 focus:ring-red-50'
-                    : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50'
+                    ? 'border-red-300 focus:border-red-400 focus:ring-red-50 dark:border-red-900/70 dark:focus:border-red-500 dark:focus:ring-red-950/40'
+                    : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50 dark:border-slate-700 dark:focus:border-blue-500 dark:focus:ring-blue-950/40'
                 }`}
               >
                 {STAGE_OPTIONS.map((option) => (
@@ -295,10 +295,10 @@ export function UploadVideoModal({
                 }}
                 maxLength={100}
                 placeholder="ENTER YOUR CUTDIE..."
-                className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] uppercase text-slate-600 outline-none transition placeholder:text-slate-400 focus:ring-2 ${
+                className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] uppercase text-slate-600 outline-none transition placeholder:text-slate-400 focus:ring-2 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                   fieldErrors.cutDie
-                    ? 'border-red-300 focus:border-red-400 focus:ring-red-50'
-                    : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50'
+                    ? 'border-red-300 focus:border-red-400 focus:ring-red-50 dark:border-red-900/70 dark:focus:border-red-500 dark:focus:ring-red-950/40'
+                    : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50 dark:border-slate-700 dark:focus:border-blue-500 dark:focus:ring-blue-950/40'
                 }`}
               />
             </Field>
@@ -307,7 +307,7 @@ export function UploadVideoModal({
               <select
                 value={area}
                 onChange={(e) => setArea(e.target.value as StageKey)}
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-50"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-500 dark:focus:ring-blue-950/40"
               >
                 {categories.map((option) => (
                   <option key={option.id} value={option.value}>
@@ -327,27 +327,27 @@ export function UploadVideoModal({
               }}
               maxLength={255}
               placeholder="ENTER YOUR ARTICLE..."
-              className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] uppercase text-slate-600 outline-none transition placeholder:text-slate-400 focus:ring-2 ${
+              className={`h-10 w-full rounded-xl border bg-white px-3 text-[13px] uppercase text-slate-600 outline-none transition placeholder:text-slate-400 focus:ring-2 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                 fieldErrors.article
-                  ? 'border-red-300 focus:border-red-400 focus:ring-red-50'
-                  : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50'
+                  ? 'border-red-300 focus:border-red-400 focus:ring-red-50 dark:border-red-900/70 dark:focus:border-red-500 dark:focus:ring-red-950/40'
+                  : 'border-slate-200 focus:border-blue-300 focus:ring-blue-50 dark:border-slate-700 dark:focus:border-blue-500 dark:focus:ring-blue-950/40'
               }`}
             />
           </Field>
 
           <Field label="Video" error={fieldErrors.files ?? fileError}>
-            <label className="flex h-10 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 transition hover:border-slate-300">
-              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-50 text-blue-500">
+            <label className="flex h-10 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-50 text-blue-500 dark:bg-blue-950/45 dark:text-blue-300">
                 <FileVideo className="h-4 w-4" />
               </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] text-slate-500">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-slate-500 dark:text-slate-300">
                 {fileNames.length === 0
                   ? 'Choose video files...'
                   : fileNames.length === 1
                     ? fileNames[0]
                     : `${fileNames.length} videos selected`}
               </span>
-              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 Browse
               </span>
               <input
@@ -362,24 +362,24 @@ export function UploadVideoModal({
               />
             </label>
             <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
                 Maximum {maxFiles} videos per upload
               </span>
-              <span className="text-[11px] font-medium text-slate-500">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                 {fileNames.length}/{maxFiles}
               </span>
             </div>
           </Field>
 
           {isSubmitting ? (
-            <div className="space-y-1.5 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-3">
-              <div className="flex items-center justify-between text-[12px] font-medium text-slate-600">
+            <div className="space-y-1.5 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-3 dark:border-blue-900/50 dark:bg-slate-800/80">
+              <div className="flex items-center justify-between text-[12px] font-medium text-slate-600 dark:text-slate-200">
                 <span>Upload progress</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-blue-100">
+              <div className="h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-slate-700">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-[width] duration-200"
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-[width] duration-200 dark:from-sky-400 dark:to-violet-400"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -387,7 +387,7 @@ export function UploadVideoModal({
           ) : null}
 
           {submitError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-500">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-500 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
               {submitError}
             </div>
           ) : null}
@@ -396,7 +396,7 @@ export function UploadVideoModal({
             <button
               type="submit"
               disabled={fileNames.length === 0 || !!fileError || isSubmitting}
-              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
+              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:text-white disabled:shadow-none dark:shadow-[0_10px_24px_rgba(59,130,246,0.16)] dark:disabled:from-slate-700 dark:disabled:to-slate-700 dark:disabled:text-slate-300"
             >
               <Upload className="h-4 w-4" />
               {isSubmitting ? 'Uploading...' : 'Upload'}
@@ -404,7 +404,7 @@ export function UploadVideoModal({
             <button
               type="button"
               onClick={handleCancel}
-              className="h-10 flex-1 rounded-xl bg-red-500 text-[14px] font-semibold text-white transition hover:bg-red-600"
+              className="h-10 flex-1 rounded-xl bg-red-500 text-[14px] font-semibold text-white transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500"
             >
               Cancel
             </button>
@@ -426,10 +426,10 @@ function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-[13px] font-medium text-slate-700">{label}</span>
+      <span className="text-[13px] font-medium text-slate-700 dark:text-slate-300">{label}</span>
       {children}
       {error ? (
-        <p className="text-[11px] font-medium text-red-500">{error}</p>
+        <p className="text-[11px] font-medium text-red-500 dark:text-red-300">{error}</p>
       ) : null}
     </label>
   );
@@ -500,14 +500,14 @@ function DateInput({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-[13px] font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-300 focus:ring-2 focus:ring-blue-50"
+        className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-[13px] font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-300 focus:ring-2 focus:ring-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:border-blue-500 dark:focus:ring-blue-950/40"
       >
         <span>{formatDisplayDate(normalizedValue)}</span>
-        <CalendarDays className="h-4 w-4 text-slate-500" />
+        <CalendarDays className="h-4 w-4 text-slate-500 dark:text-slate-400" />
       </button>
 
       {open ? (
-        <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-[280px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_20px_60px_rgba(15,23,42,0.14)]">
+        <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-[280px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_20px_60px_rgba(15,23,42,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_60px_rgba(0,0,0,0.42)]">
           <div className="mb-3 flex items-center justify-between">
             <button
               type="button"
@@ -516,12 +516,12 @@ function DateInput({
                   (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1)
                 )
               }
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
 
-            <div className="text-sm font-semibold text-slate-700">{monthLabel}</div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-100">{monthLabel}</div>
 
             <button
               type="button"
@@ -530,7 +530,7 @@ function DateInput({
                   (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1)
                 )
               }
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -540,7 +540,7 @@ function DateInput({
             {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day) => (
               <div
                 key={day}
-                className="flex h-8 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                className="flex h-8 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"
               >
                 {day}
               </div>
@@ -567,9 +567,9 @@ function DateInput({
                     isSelected
                       ? 'bg-gradient-to-r from-blue-500 to-violet-500 font-semibold text-white shadow-sm'
                       : isCurrentMonth
-                        ? 'text-slate-700 hover:bg-slate-100'
-                        : 'text-slate-300 hover:bg-slate-50',
-                    !isSelected && isToday ? 'ring-1 ring-blue-200' : '',
+                        ? 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                        : 'text-slate-300 hover:bg-slate-50 dark:text-slate-600 dark:hover:bg-slate-800/50',
+                    !isSelected && isToday ? 'ring-1 ring-blue-200 dark:ring-blue-700/70' : '',
                   ].join(' ')}
                 >
                   {date.getDate()}

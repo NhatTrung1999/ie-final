@@ -32,6 +32,7 @@ type TopBarProps = {
   onImportShareBundle: () => void;
   displayName: string;
   subtitle: string;
+  role: string;
   theme: ThemeMode;
   onToggleTheme: () => void;
 };
@@ -47,6 +48,7 @@ export function TopBar({
   onImportShareBundle,
   displayName,
   subtitle,
+  role,
   theme,
   onToggleTheme,
 }: TopBarProps) {
@@ -68,9 +70,7 @@ export function TopBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const normalizedDisplayName = displayName.trim().toLowerCase();
-  const isAdminUser =
-    normalizedDisplayName === 'administrator' || normalizedDisplayName === 'admin';
+  const isAdminUser = role.trim().toLowerCase() === 'admin';
 
   return (
     <header className="flex h-auto shrink-0 items-center justify-between border-b-2 border-gray-100 bg-white px-3 py-2 sm:h-14 sm:px-4 sm:py-0 lg:px-5 dark:border-slate-800 dark:bg-slate-950">

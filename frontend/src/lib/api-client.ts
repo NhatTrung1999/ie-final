@@ -1,6 +1,12 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 
-import { getStoredToken } from '@/lib/storage';
+import {
+  clearStoredSession,
+  getStoredRefreshToken,
+  getStoredSessionUser,
+  getStoredToken,
+  persistSession,
+} from '@/lib/storage';
 import {
   isBackendReachable,
   isBrowserOffline,
@@ -12,6 +18,17 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://192.168.18.42:
 export const UNAUTHORIZED_EVENT = 'ie-auth-unauthorized';
 
 const nativeAdapter = axios.getAdapter(axios.defaults.adapter);
+const refreshClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 8000,
+  adapter: nativeAdapter,
+});
+
+type RetriableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+};
+
+let refreshInFlight: Promise<string> | null = null;
 
 async function dynamicAdapter(config: InternalAxiosRequestConfig) {
   if (isOfflineMode() || isBrowserOffline() || isBackendReachable() === false) {
@@ -39,8 +56,67 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error?.response?.status === 401 && typeof window !== 'undefined') {
+  async (error) => {
+    const originalRequest = error?.config as RetriableRequestConfig | undefined;
+    const status = error?.response?.status;
+    const requestUrl = String(originalRequest?.url ?? '');
+
+    if (
+      status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !requestUrl.includes('/auth/login') &&
+      !requestUrl.includes('/auth/refresh')
+    ) {
+      const refreshToken = getStoredRefreshToken();
+
+      if (refreshToken) {
+        originalRequest._retry = true;
+
+        try {
+          refreshInFlight ??= refreshClient
+            .post<{
+              accessToken: string;
+              refreshToken: string;
+              user?: {
+                username?: string;
+                displayName?: string;
+                category?: string;
+                factory?: string;
+                role?: string;
+              };
+            }>('/auth/refresh', { refreshToken })
+            .then(({ data }) => {
+              const currentUser = getStoredSessionUser();
+              persistSession(
+                data.accessToken,
+                {
+                  username:
+                    data.user?.displayName ||
+                    data.user?.username ||
+                    currentUser.username,
+                  category: data.user?.category || currentUser.category,
+                  factory: data.user?.factory || currentUser.factory,
+                  role: data.user?.role || currentUser.role,
+                },
+                data.refreshToken
+              );
+              return data.accessToken;
+            })
+            .finally(() => {
+              refreshInFlight = null;
+            });
+
+          const accessToken = await refreshInFlight;
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          return apiClient(originalRequest);
+        } catch {
+          clearStoredSession();
+        }
+      }
+    }
+
+    if (status === 401 && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
     }
 

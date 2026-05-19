@@ -9,6 +9,9 @@ import {
 } from '@/lib/offline-api';
 import { getStoredSessionUser, type SessionUser } from '@/lib/storage';
 
+const DEFAULT_FACTORY = 'LYV';
+const FACTORIES = new Set(['LYV', 'LHG', 'LVL', 'LYM']);
+
 type LoginPayload = {
   username: string;
   password: string;
@@ -17,10 +20,13 @@ type LoginPayload = {
 
 type LoginResponse = {
   accessToken: string;
+  refreshToken: string;
   user: {
     username: string;
     displayName: string;
     category: string;
+    factory?: string;
+    role?: string;
   };
 };
 
@@ -28,6 +34,8 @@ export type AuthUser = {
   id: string;
   username: string;
   displayName: string;
+  factory: string;
+  role: string;
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -48,10 +56,13 @@ export async function loginRequest(payload: LoginPayload) {
 
     return {
       accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
       user: {
         username: data.user.username || payload.username,
         displayName: data.user.displayName || payload.username,
         category: data.user.category || payload.category,
+        factory: normalizeFactory(data.user.factory),
+        role: data.user.role || 'user',
       },
     };
   } catch (error) {
@@ -60,10 +71,13 @@ export async function loginRequest(payload: LoginPayload) {
       const { data } = await apiClient.post<LoginResponse>('/auth/login', payload);
       return {
         accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
         user: {
           username: data.user.username || payload.username,
           displayName: data.user.displayName || payload.username,
           category: data.user.category || payload.category,
+          factory: normalizeFactory(data.user.factory),
+          role: data.user.role || 'user',
         },
       };
     }
@@ -78,6 +92,8 @@ export async function getCurrentUser() {
     return {
       username: session.username || 'Administrator',
       category: session.category || 'FF28',
+      factory: normalizeFactory(session.factory),
+      role: session.role || 'user',
     };
   }
 
@@ -87,12 +103,16 @@ export async function getCurrentUser() {
         username?: string;
         displayName?: string;
         category?: string;
+        factory?: string;
+        role?: string;
       };
     }>('/auth/me');
 
     const user: SessionUser = {
       username: data.user.displayName || data.user.username || 'Administrator',
       category: data.user.category || 'FF28',
+      factory: normalizeFactory(data.user.factory),
+      role: data.user.role || 'user',
     };
 
     return user;
@@ -103,6 +123,8 @@ export async function getCurrentUser() {
       return {
         username: session.username || 'Administrator',
         category: session.category || 'FF28',
+        factory: normalizeFactory(session.factory),
+        role: session.role || 'user',
       };
     }
 
@@ -114,6 +136,8 @@ export async function registerUser(payload: {
   username: string;
   displayName: string;
   password: string;
+  factory: string;
+  role: string;
 }) {
   try {
     const { data } = await apiClient.post<{
@@ -167,4 +191,9 @@ export async function deleteUser(id: string) {
 
     throw new Error(getErrorMessage(error, 'Unable to delete user right now.'));
   }
+}
+
+function normalizeFactory(factory?: string) {
+  const normalized = factory?.trim().toUpperCase();
+  return normalized && FACTORIES.has(normalized) ? normalized : DEFAULT_FACTORY;
 }

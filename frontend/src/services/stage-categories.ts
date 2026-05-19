@@ -4,6 +4,7 @@ import { apiClient } from '@/lib/api-client';
 import {
   getOfflineStageCategories,
   isOfflineNetworkError,
+  replaceOfflineStageCategories,
   setBackendReachable,
   shouldUseOfflineData,
 } from '@/lib/offline-api';
@@ -28,7 +29,9 @@ export async function fetchStageCategories() {
 
   try {
     const { data } = await apiClient.get<{ categories?: StageCategory[] }>('/stage-categories');
-    return data.categories ?? [];
+    const categories = data.categories ?? [];
+    replaceOfflineStageCategories(categories);
+    return categories;
   } catch (error) {
     if (shouldUseOfflineData() || isOfflineNetworkError(error)) {
       setBackendReachable(false);

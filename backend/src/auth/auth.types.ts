@@ -2,6 +2,8 @@ export type AuthenticatedUser = {
   id: string;
   username: string;
   displayName: string;
+  factory: string;
+  role: string;
 };
 
 export type JwtUserPayload = {
@@ -9,4 +11,7 @@ export type JwtUserPayload = {
   username: string;
   displayName: string;
   category: string;
+  factory: string;
+  role: string;
+  tokenType?: 'access' | 'refresh';
 };

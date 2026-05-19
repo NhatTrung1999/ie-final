@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, Upload, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, X } from 'lucide-react';
 
 import type { OfflineShareImportMode } from '@/lib/offline-api';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,6 @@ type BundlePreview = {
   exportedAt: string;
   stageCount: number;
   videoCount: number;
-  userCount: number;
 };
 
 const IMPORT_MODES: Array<{
@@ -32,7 +31,7 @@ const IMPORT_MODES: Array<{
     value: 'replace',
     label: 'Replace all data',
     description: 'Overwrite the current local database with the imported bundle.',
-    warning: 'This will replace users, stages, CT rows, history, and videos on this device.',
+    warning: 'This will replace stages, CT rows, history, and videos on this device.',
   },
   {
     value: 'merge-stage-data',
@@ -126,46 +125,30 @@ export function ImportShareBundleModal({
   const currentMode = IMPORT_MODES.find((item) => item.value === mode) ?? IMPORT_MODES[0];
 
   return (
-    <div className="absolute inset-0 z-60 flex items-center justify-center overflow-y-auto bg-slate-950/25 px-3 py-5 backdrop-blur-[2px] sm:px-4 sm:py-8">
-      <div className="w-full max-w-[640px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_22px_64px_rgba(15,23,42,0.16)]">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-4.5">
+    <div className="absolute inset-0 z-60 flex items-center justify-center overflow-y-auto bg-slate-950/45 px-3 py-5 backdrop-blur-[2px] sm:px-4 sm:py-8">
+      <div className="w-full max-w-[640px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_22px_64px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_22px_64px_rgba(0,0,0,0.38)]">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-4.5 dark:border-slate-700">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="h-4 w-1 rounded-full bg-linear-to-b from-blue-500 to-violet-500" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
                 Data Sharing
               </span>
             </div>
-            <h2 className="text-[18px] font-semibold tracking-tight text-slate-700">
+            <h2 className="text-[18px] font-semibold tracking-tight text-slate-700 dark:text-slate-100">
               Import Share Bundle
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 px-4 py-3.5 sm:px-4.5">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                <Upload className="h-4 w-4" />
-              </span>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-700">
-                  Drag and drop a share bundle here
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  Or click to pick a JSON file exported from another device.
-                </div>
-              </div>
-            </div>
-          </div>
-
           <input
             ref={inputRef}
             type="file"
@@ -199,24 +182,24 @@ export function ImportShareBundleModal({
             className={cn(
               'cursor-pointer rounded-2xl border-2 border-dashed px-4 py-5 transition',
               isDragging
-                ? 'border-emerald-300 bg-emerald-50/70'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80',
+                ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-500/70 dark:bg-emerald-950/30'
+                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800/70',
             )}
           >
             <div className="flex flex-col items-center gap-3 text-center">
               <div
                 className={cn(
                   'flex h-12 w-12 items-center justify-center rounded-full',
-                  isDragging ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500',
+                  isDragging ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/70 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300',
                 )}
               >
                 <FileText className="h-5 w-5" />
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-slate-700">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-100">
                   {selectedFile ? selectedFile.name : 'Drop file here or click to browse'}
                 </p>
-                <p className="text-xs leading-5 text-slate-400">
+                <p className="text-xs leading-5 text-slate-400 dark:text-slate-400">
                   The file will be checked before import, then you confirm the action below.
                 </p>
               </div>
@@ -235,22 +218,22 @@ export function ImportShareBundleModal({
                   className={cn(
                     'rounded-2xl border px-3 py-3 text-left transition',
                     active
-                      ? 'border-emerald-300 bg-emerald-50/70'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70',
+                      ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-400/70 dark:bg-emerald-950/35'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800/70',
                   )}
                 >
                   <div className="flex items-start gap-3">
                     <div
                       className={cn(
                         'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
-                        active ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400',
+                        active ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/70 dark:text-emerald-200' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-400',
                       )}
                     >
                       {active ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold text-slate-700">{item.label}</p>
-                      <p className="mt-0.5 text-[11px] leading-5 text-slate-400">{item.description}</p>
+                      <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-100">{item.label}</p>
+                      <p className="mt-0.5 text-[11px] leading-5 text-slate-400 dark:text-slate-400">{item.description}</p>
                     </div>
                   </div>
                 </button>
@@ -258,58 +241,50 @@ export function ImportShareBundleModal({
             })}
           </div>
 
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
             <span className="font-semibold">{currentMode.label}: </span>
             {currentMode.warning}
           </div>
 
           {bundlePreview ? (
-            <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800/50">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                   Exported at
                 </div>
-                <div className="mt-1 text-[13px] font-medium text-slate-700">
+                <div className="mt-1 text-[13px] font-medium text-slate-700 dark:text-slate-200">
                   {formatDateTime(bundlePreview.exportedAt)}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                   Bundle version
                 </div>
-                <div className="mt-1 text-[13px] font-medium text-slate-700">
+                <div className="mt-1 text-[13px] font-medium text-slate-700 dark:text-slate-200">
                   v{bundlePreview.version}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                   Stage items
                 </div>
-                <div className="mt-1 text-[13px] font-medium text-slate-700">
+                <div className="mt-1 text-[13px] font-medium text-slate-700 dark:text-slate-200">
                   {bundlePreview.stageCount}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                   Videos
                 </div>
-                <div className="mt-1 text-[13px] font-medium text-slate-700">
+                <div className="mt-1 text-[13px] font-medium text-slate-700 dark:text-slate-200">
                   {bundlePreview.videoCount}
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:col-span-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Users
-                </div>
-                <div className="mt-1 text-[13px] font-medium text-slate-700">
-                  {bundlePreview.userCount}
                 </div>
               </div>
             </div>
           ) : null}
 
           {submitError ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-500">
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-500 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300">
               {submitError}
             </div>
           ) : null}
@@ -319,14 +294,14 @@ export function ImportShareBundleModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="h-10 rounded-xl border border-slate-200 px-4 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-10 rounded-xl border border-slate-200 px-4 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!selectedBundle || isSubmitting}
-              className="h-10 rounded-xl bg-emerald-500 px-4 text-[13px] font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              className="h-10 rounded-xl bg-emerald-500 px-4 text-[13px] font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
             >
               {isSubmitting ? 'Importing...' : 'Confirm import'}
             </button>
@@ -347,7 +322,6 @@ function summarizeBundle(bundle: unknown): BundlePreview {
     exportedAt?: unknown;
     snapshot?: {
       stages?: unknown;
-      users?: unknown;
     };
     videos?: unknown;
   };
@@ -359,7 +333,6 @@ function summarizeBundle(bundle: unknown): BundlePreview {
     exportedAt,
     stageCount: Array.isArray(parsed.snapshot?.stages) ? parsed.snapshot?.stages.length : 0,
     videoCount: Array.isArray(parsed.videos) ? parsed.videos.length : 0,
-    userCount: Array.isArray(parsed.snapshot?.users) ? parsed.snapshot?.users.length : 0,
   };
 }
 

@@ -1,4 +1,8 @@
-import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import {
+  AxiosError,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 import ExcelJS from 'exceljs';
 
 import { stages as seedStageTabs } from '@/data/dashboard';
@@ -18,6 +22,7 @@ import type { MachineTypeItem } from '@/services/machine-types';
 type OfflineUser = AuthUser & {
   password: string;
   category: string;
+  role: string;
 };
 
 type OfflineStageItem = StageItem & {
@@ -87,8 +92,16 @@ export const OFFLINE_SYNC_EVENT = 'ie-offline-sync-changed';
 const ASSET_DB_NAME = 'ie-video-offline-assets';
 const ASSET_STORE_NAME = 'video-assets';
 const OFFLINE_TOKEN_PREFIX = 'offline-token:';
-const PUBLIC_ROUTES = new Set(['/auth/login']);
-const DEFAULT_DEMO_STAGE_IDS = new Set(['c10', 'c4', 'c3', 'c2', 's1', 'a1', 'st1']);
+const PUBLIC_ROUTES = new Set(['/auth/login', '/auth/refresh']);
+const DEFAULT_DEMO_STAGE_IDS = new Set([
+  'c10',
+  'c4',
+  'c3',
+  'c2',
+  's1',
+  'a1',
+  'st1',
+]);
 const DEFAULT_DEMO_ROW_IDS = new Set(['r1', 'r2', 'r3']);
 const DEFAULT_DEMO_HISTORY_IDS = new Set([
   'h1',
@@ -100,6 +113,9 @@ const DEFAULT_DEMO_HISTORY_IDS = new Set([
   'h7',
   'h8',
 ]);
+const LEGACY_SHARE_CATEGORY_VALUES = new Set(['FF28', 'COSTING', 'LSA']);
+const DEFAULT_FACTORY = 'LYV';
+const FACTORIES = new Set(['LYV', 'LHG', 'LVL', 'LYM']);
 
 let cachedDb: OfflineDb | null = null;
 const objectUrlCache = new Map<string, string>();
@@ -170,7 +186,9 @@ export function getCachedStageTabs() {
       .map((value) => normalizeStageTabValue(value))
       .filter((value): value is StageKey => value.length > 0);
 
-    return normalized.length > 0 ? dedupeStageTabs(normalized) : [...seedStageTabs];
+    return normalized.length > 0
+      ? dedupeStageTabs(normalized)
+      : [...seedStageTabs];
   } catch {
     return [...seedStageTabs];
   }
@@ -186,11 +204,15 @@ export function setCachedStageTabs(tabs: StageKey[]) {
   return normalized;
 }
 
-export function cacheStageTabsFromStages(stages: Array<Pick<StageItem, 'stage'>>) {
+export function cacheStageTabsFromStages(
+  stages: Array<Pick<StageItem, 'stage'>>
+) {
   const currentTabs = getCachedStageTabs();
   const nextTabs = dedupeStageTabs([
     ...currentTabs,
-    ...stages.map((item) => normalizeStageTabValue(item.stage)).filter((value) => value.length > 0),
+    ...stages
+      .map((item) => normalizeStageTabValue(item.stage))
+      .filter((value) => value.length > 0),
   ]);
 
   return setCachedStageTabs(nextTabs);
@@ -205,7 +227,8 @@ export function isOfflineNetworkError(error: unknown) {
     request?: unknown;
   };
   const code = typeof candidate.code === 'string' ? candidate.code : '';
-  const message = typeof candidate.message === 'string' ? candidate.message : '';
+  const message =
+    typeof candidate.message === 'string' ? candidate.message : '';
   const normalizedMessage = message.toLowerCase();
 
   if (code === 'ERR_CANCELED' || candidate.name === 'CanceledError') {
@@ -250,7 +273,11 @@ export function notifyOfflineSyncStateChanged() {
 export async function buildOfflineSyncFormData() {
   const db = loadDb();
   const formData = new FormData();
-  const videoRefs: Array<{ assetId: string; stageId: string; originalName: string }> = [];
+  const videoRefs: Array<{
+    assetId: string;
+    stageId: string;
+    originalName: string;
+  }> = [];
 
   formData.append(
     'snapshot',
@@ -263,7 +290,7 @@ export async function buildOfflineSyncFormData() {
       history: db.history,
       controlSessions: db.controlSessions,
       deleteLogs: db.deleteLogs,
-    }),
+    })
   );
 
   for (const stage of db.stages) {
@@ -329,7 +356,6 @@ export async function buildOfflineShareBundle() {
     version: 1,
     exportedAt: new Date().toISOString(),
     snapshot: {
-      users: db.users,
       stageCategories: db.stageCategories,
       stages: db.stages,
       tableRows: db.tableRows,
@@ -350,6 +376,19 @@ export function getOfflineStageCategories() {
   return [...loadDb().stageCategories]
     .sort((left, right) => left.sortOrder - right.sortOrder)
     .map(stripStageCategory);
+}
+
+export function replaceOfflineStageCategories(categories: StageCategory[]) {
+  const db = loadDb();
+  const previousSnapshotJson = JSON.stringify(sanitizeDbForPersist(db));
+  const nextDb = migrateLegacyDefaultStageCategories({
+    ...cloneDbForMutation(db),
+    stageCategories: normalizeOfflineStageCategories(categories),
+  });
+
+  cachedDb = nextDb;
+  saveDb(nextDb, previousSnapshotJson, false);
+  setCachedStageTabs(nextDb.stageCategories.map((category) => category.value));
 }
 
 /**
@@ -382,7 +421,10 @@ export async function createOfflineStages(payload: {
 
   const createdStages = await Promise.all(
     payload.files.map(async (file, index) => {
-      const fallbackCode = payload.files.length === 1 ? cutDie.toUpperCase() : `${cutDie.toUpperCase()}-${index + 1}`;
+      const fallbackCode =
+        payload.files.length === 1
+          ? cutDie.toUpperCase()
+          : `${cutDie.toUpperCase()}-${index + 1}`;
       const parsedIdentity = parseStageIdentity(file.name, fallbackCode);
       const uniqueName = ensureUniqueStageName(db.stages, {
         area,
@@ -398,7 +440,7 @@ export async function createOfflineStages(payload: {
           area,
           article,
         },
-        file.name,
+        file.name
       );
 
       const nextStage: OfflineStageItem = {
@@ -429,11 +471,11 @@ export async function createOfflineStages(payload: {
           no: parsedIdentity.code,
           partName: uniqueName,
           sortOrder: db.tableRows.length + index + 1,
-        }),
+        })
       );
 
       return nextStage;
-    }),
+    })
   );
 
   cachedDb = db;
@@ -445,12 +487,11 @@ export async function createOfflineStages(payload: {
       videoUrl: stage.videoAssetId
         ? await getVideoObjectUrl(stage.videoAssetId)
         : undefined,
-    })),
+    }))
   );
 
   return result;
 }
-
 
 type OfflineStageFilterParams = {
   dateFrom?: string;
@@ -473,9 +514,10 @@ export async function getOfflineStages(filters?: OfflineStageFilterParams) {
           row.confirmed &&
           (row.stageItemId === stage.id ||
             (!row.stageItemId &&
-              normalizeText(row.stage) === normalizeText(stage.area ?? stage.stage) &&
-              normalizeText(row.no) === normalizeText(stage.code))),
-      ),
+              normalizeText(row.stage) ===
+                normalizeText(stage.area ?? stage.stage) &&
+              normalizeText(row.no) === normalizeText(stage.code)))
+      )
     );
   }
   cacheStageTabsFromStages(stages);
@@ -514,7 +556,9 @@ export function getOfflineHistoryItems(filters?: {
   stageCode?: string;
 }) {
   const db = loadDb();
-  return filterHistory(db.history, filters ?? {}).map((item) => stripHistoryItem(item, db));
+  return filterHistory(db.history, filters ?? {}).map((item) =>
+    stripHistoryItem(item, db)
+  );
 }
 
 export function getOfflineControlSession(filters?: {
@@ -528,17 +572,21 @@ export function getOfflineControlSession(filters?: {
 export function getOfflineMachineTypes(department?: string) {
   const normalizedDepartment = normalizeText(department);
   const machineTypes = normalizedDepartment
-    ? loadDb().machineTypes.filter((item) => normalizeText(item.department) === normalizedDepartment)
+    ? loadDb().machineTypes.filter(
+        (item) => normalizeText(item.department) === normalizedDepartment
+      )
     : loadDb().machineTypes;
 
   return machineTypes;
 }
 
-export function getOfflineDeleteLogs(filters: {
-  entityType?: string;
-  username?: string;
-  search?: string;
-} = {}) {
+export function getOfflineDeleteLogs(
+  filters: {
+    entityType?: string;
+    username?: string;
+    search?: string;
+  } = {}
+) {
   return filterDeleteLogs(loadDb().deleteLogs, filters);
 }
 
@@ -546,7 +594,7 @@ export async function restoreOfflineShareBundle(
   bundle: unknown,
   options?: {
     mode?: OfflineShareImportMode;
-  },
+  }
 ) {
   const parsed = validateShareBundle(bundle);
   const mode = options?.mode ?? 'replace';
@@ -557,25 +605,25 @@ export async function restoreOfflineShareBundle(
     mode === 'merge-stage-data'
       ? mergeShareBundleStageData(current, parsed)
       : {
-          users:
-            Array.isArray(parsed.snapshot.users) && parsed.snapshot.users.length > 0
-              ? (parsed.snapshot.users as OfflineUser[])
-              : current.users,
+          users: current.users,
           stageCategories:
             Array.isArray(parsed.snapshot.stageCategories) &&
             parsed.snapshot.stageCategories.length > 0
               ? (parsed.snapshot.stageCategories as OfflineStageCategory[])
               : current.stageCategories,
           stages:
-            Array.isArray(parsed.snapshot.stages) && parsed.snapshot.stages.length > 0
+            Array.isArray(parsed.snapshot.stages) &&
+            parsed.snapshot.stages.length > 0
               ? (parsed.snapshot.stages as OfflineStageItem[])
               : current.stages,
           tableRows:
-            Array.isArray(parsed.snapshot.tableRows) && parsed.snapshot.tableRows.length > 0
+            Array.isArray(parsed.snapshot.tableRows) &&
+            parsed.snapshot.tableRows.length > 0
               ? (parsed.snapshot.tableRows as OfflineTableRow[])
               : current.tableRows,
           history:
-            Array.isArray(parsed.snapshot.history) && parsed.snapshot.history.length > 0
+            Array.isArray(parsed.snapshot.history) &&
+            parsed.snapshot.history.length > 0
               ? (parsed.snapshot.history as OfflineHistoryEntry[])
               : current.history,
           controlSessions:
@@ -584,11 +632,13 @@ export async function restoreOfflineShareBundle(
               ? (parsed.snapshot.controlSessions as OfflineControlSession[])
               : current.controlSessions,
           deleteLogs:
-            Array.isArray(parsed.snapshot.deleteLogs) && parsed.snapshot.deleteLogs.length > 0
+            Array.isArray(parsed.snapshot.deleteLogs) &&
+            parsed.snapshot.deleteLogs.length > 0
               ? (parsed.snapshot.deleteLogs as DeleteLogItem[])
               : current.deleteLogs,
           machineTypes:
-            Array.isArray(parsed.snapshot.machineTypes) && parsed.snapshot.machineTypes.length > 0
+            Array.isArray(parsed.snapshot.machineTypes) &&
+            parsed.snapshot.machineTypes.length > 0
               ? (parsed.snapshot.machineTypes as MachineTypeItem[])
               : current.machineTypes,
         };
@@ -604,10 +654,36 @@ export async function restoreOfflineShareBundle(
 }
 
 export async function applySyncedSnapshot(snapshot: Partial<OfflineDb>) {
-  void snapshot;
-  await clearVideoAssets();
-  resetVideoAssetCache();
-  clearOfflineDbStorage();
+  const db = loadDb();
+  const previousSnapshotJson = JSON.stringify(sanitizeDbForPersist(db));
+  const nextDb = migrateLegacyDefaultStageCategories({
+    ...cloneDbForMutation(db),
+    stageCategories: Array.isArray(snapshot.stageCategories)
+      ? normalizeOfflineStageCategories(snapshot.stageCategories)
+      : db.stageCategories,
+    machineTypes: Array.isArray(snapshot.machineTypes)
+      ? mergeMachineTypes(createSeedMachineTypes(), snapshot.machineTypes)
+      : db.machineTypes,
+    stages: Array.isArray(snapshot.stages)
+      ? (snapshot.stages as OfflineStageItem[])
+      : db.stages,
+    tableRows: Array.isArray(snapshot.tableRows)
+      ? (snapshot.tableRows as OfflineTableRow[])
+      : db.tableRows,
+    history: Array.isArray(snapshot.history)
+      ? (snapshot.history as OfflineHistoryEntry[])
+      : db.history,
+    controlSessions: Array.isArray(snapshot.controlSessions)
+      ? (snapshot.controlSessions as OfflineControlSession[])
+      : db.controlSessions,
+    deleteLogs: Array.isArray(snapshot.deleteLogs)
+      ? snapshot.deleteLogs
+      : db.deleteLogs,
+  });
+
+  cachedDb = nextDb;
+  saveDb(nextDb, previousSnapshotJson, false);
+  setCachedStageTabs(nextDb.stageCategories.map((category) => category.value));
   markOfflineSnapshotSynced();
 }
 
@@ -640,7 +716,7 @@ export async function offlineAdapter(config: InternalAxiosRequestConfig) {
     return rejectRequest(
       config,
       500,
-      error instanceof Error ? error.message : 'Offline request failed.',
+      error instanceof Error ? error.message : 'Offline request failed.'
     );
   }
 }
@@ -651,6 +727,8 @@ function createSeedDb(): OfflineDb {
       id: 'user-admin',
       username: 'administrator',
       displayName: 'Administrator',
+      factory: DEFAULT_FACTORY,
+      role: 'admin',
       password: 'admin123',
       category: 'FF28',
     },
@@ -658,15 +736,28 @@ function createSeedDb(): OfflineDb {
       id: 'user-demo',
       username: 'demo',
       displayName: 'Demo User',
+      factory: DEFAULT_FACTORY,
+      role: 'user',
       password: 'demo123',
       category: 'LSA',
     },
   ];
 
   const stageCategories: OfflineStageCategory[] = [
-    { id: 'cat-ff28', value: 'FF28', label: 'FF28', sortOrder: 1 },
-    { id: 'cat-costing', value: 'COSTING', label: 'COSTING', sortOrder: 2 },
-    { id: 'cat-lsa', value: 'LSA', label: 'LSA', sortOrder: 3 },
+    { id: 'cat-cutting', value: 'CUTTING', label: 'CUTTING', sortOrder: 1 },
+    {
+      id: 'cat-stitching',
+      value: 'STITCHING',
+      label: 'STITCHING',
+      sortOrder: 2,
+    },
+    { id: 'cat-assembly', value: 'ASSEMBLY', label: 'ASSEMBLY', sortOrder: 3 },
+    {
+      id: 'cat-stockfitting',
+      value: 'STOCKFITTING',
+      label: 'STOCKFITTING',
+      sortOrder: 4,
+    },
   ];
 
   return {
@@ -681,108 +772,230 @@ function createSeedDb(): OfflineDb {
   };
 }
 
-function createEmptyDb(): OfflineDb {
-  return {
-    users: [],
-    stageCategories: [],
-    stages: [],
-    tableRows: [],
-    history: [],
-    controlSessions: [],
-    deleteLogs: [],
-    machineTypes: [],
-  };
-}
-
 function createSeedMachineTypes(): MachineTypeItem[] {
   const defaults = [
-    ['CUTTING', 'Cutting', '7.0%'],
-    ['CUTTING', 'Cutting canvas&other', '7.0%'],
-    ['CUTTING', 'Buffing', '10.0%'],
-    ['CUTTING', 'Buffing mouse machine', '10.0%'],
-    ['CUTTING', 'Skiving', '10.0%'],
-    ['CUTTING', 'Rolling', '10.0%'],
-    ['CUTTING', 'Printing', '10.0%'],
-    ['CUTTING', 'Embossing', '10.0%'],
-    ['CUTTING', 'Sockliner transfer print machine', '10.0%'],
-    ['CUTTING', 'Laser Machine', '15.0%'],
-    ['CUTTING', 'Auto Machine', '15.0%'],
-    ['STITCHING', 'Cementing', '7.0%'],
-    ['STITCHING', 'Attaching reinforcement', '7.0%'],
-    ['STITCHING', 'Attaching 3 sides tape', '7.0%'],
-    ['STITCHING', 'Marking', '7.0%'],
-    ['STITCHING', 'Handwork', '7.0%'],
-    ['STITCHING', 'Foding machine', '10.0%'],
-    ['STITCHING', 'Punching machine', '10.0%'],
-    ['STITCHING', 'Eyeleting machine', '10.0%'],
-    ['STITCHING', 'Edge folding machine', '10.0%'],
-    ['STITCHING', 'Tongue label pressing machine', '10.0%'],
-    ['STITCHING', 'Hotmelt Spraying macthine', '10.0%'],
-    ['STITCHING', 'Hotmelt applying macthine', '10.0%'],
-    ['STITCHING', 'Trimming machine', '10.0%'],
-    ['STITCHING', 'Hammering machine', '10.0%'],
-    ['STITCHING', 'Blowing machine', '10.0%'],
-    ['STITCHING', 'Computer Stitching', '12.5%'],
-    ['STITCHING', 'Oversew machine', '12.5%'],
-    ['STITCHING', 'Flat type machine', '12.5%'],
-    ['STITCHING', '2 needles Flat type machine', '12.5%'],
-    ['STITCHING', 'Heat Pressing seam tape', '12.5%'],
-    ['STITCHING', 'Toe gathering machine', '12.5%'],
-    ['STITCHING', 'Post type', '12.5%'],
-    ['STITCHING', 'Edge machine', '15.0%'],
-    ['STITCHING', 'Knitting machine', '15.0%'],
-    ['STITCHING', 'Binding&Zigzag stitching machine', '15.0%'],
-    ['STITCHING', 'Zigzag', '15.0%'],
-    ['STITCHING', '2 needles Post type', '15.0%'],
-    ['STITCHING', '4 needles 6 threads machine', '15.0%'],
-    ['ASSEMBLY', 'Attaching eyestay', '7.0%'],
-    ['ASSEMBLY', 'Rolling upper', '7.0%'],
-    ['ASSEMBLY', 'Rolling', '7.0%'],
-    ['ASSEMBLY', 'Trimming toe cap', '7.0%'],
-    ['ASSEMBLY', 'Handwork', '7.0%'],
-    ['ASSEMBLY', 'Packing Handwork', '7.0%'],
-    ['ASSEMBLY', 'Marking', '7.0%'],
-    ['ASSEMBLY', 'Cementing', '7.0%'],
-    ['ASSEMBLY', 'Attaching', '7.0%'],
-    ['ASSEMBLY', 'Cleaning', '7.0%'],
-    ['ASSEMBLY', 'Pressing for heel', '11.0%'],
-    ['ASSEMBLY', 'Pressing for vamp', '11.0%'],
-    ['ASSEMBLY', 'Marking on upper Machine', '11.0%'],
-    ['ASSEMBLY', 'Hotmelt applying macthine', '11.0%'],
-    ['ASSEMBLY', 'EVA bottom wrinkle removing machine', '11.0%'],
-    ['ASSEMBLY', 'Lasting machine', '11.0%'],
-    ['ASSEMBLY', 'Pressing machine', '11.0%'],
-    ['ASSEMBLY', 'Versatile Pressing Machine', '11.0%'],
-    ['ASSEMBLY', 'Buffing', '11.0%'],
-    ['ASSEMBLY', 'Trim off excessed rubber machine', '11.0%'],
-    ['ASSEMBLY', 'Cross pressing machine', '11.0%'],
-    ['ASSEMBLY', 'Heel lasting machine', '11.0%'],
-    ['ASSEMBLY', 'Upper steaming machine', '11.0%'],
-    ['ASSEMBLY', 'Heel counter activated machine', '11.0%'],
-    ['ASSEMBLY', 'Strobelling machine', '15.0%'],
-    ['ASSEMBLY', 'Stitching thread on outsole', '15.0%'],
-    ['ASSEMBLY', 'Toe lasting machine', '15.0%'],
-    ['ASSEMBLY', 'Side lasting machine', '15.0%'],
+    ['CUTTING', 'Cutting', '裁斷', 'Chặt, da', '7.0%'],
+    [
+      'CUTTING',
+      'Cutting canvas&other',
+      '裁布料&其他',
+      'Chặt vải và những liệu khác',
+      '7.0%',
+    ],
+    ['CUTTING', 'Buffing', '打粗', 'Mài đế', '10.0%'],
+    ['CUTTING', 'Buffing mouse machine', '削泡棉機', 'Mài mài mouse', '10.0%'],
+    ['CUTTING', 'Skiving', '削皮', 'Lạng', '10.0%'],
+    ['CUTTING', 'Rolling', '滚压', 'Cà', '10.0%'],
+    ['CUTTING', 'Printing', '印刷', 'In lụa', '10.0%'],
+    ['CUTTING', 'Embossing', '高周波', 'Ép cao tầng', '10.0%'],
+    [
+      'CUTTING',
+      'Sockliner transfer print machine',
+      '轉印紙壓機',
+      'Máy ép chuyển in đế trung',
+      '10.0%',
+    ],
+    ['CUTTING', 'Laser Machine', '鐳射切割機', 'Máy cắt Laser', '15.0%'],
+    ['CUTTING', 'Auto Machine', '自動裁斷機', 'Máy chặt tự động', '15.0%'],
+    ['STITCHING', 'Cementing', '手工刷胶', 'Quét keo', '7.0%'],
+    [
+      'STITCHING',
+      'Attaching reinforcement',
+      '贴补强',
+      'Dán tăng cường',
+      '7.0%',
+    ],
+    ['STITCHING', 'Attaching 3 sides tape', '贴双面胶', 'Dán 3 dây', '7.0%'],
+    ['STITCHING', 'Marking', '画线', 'Định vị', '7.0%'],
+    ['STITCHING', 'Handwork', '手工', 'Thủ công', '7.0%'],
+    ['STITCHING', 'Foding machine', '锤平机', 'Máy đập tẻ', '10.0%'],
+    ['STITCHING', 'Punching machine', '冲孔机', 'Máy đục', '10.0%'],
+    ['STITCHING', 'Eyeleting machine', '打眼機', 'Máy tán', '10.0%'],
+    ['STITCHING', 'Edge folding machine', '折邊机', 'Máy gấp biên', '10.0%'],
+    [
+      'STITCHING',
+      'Tongue label pressing machine',
+      '壓標機',
+      'Máy ép tem',
+      '10.0%',
+    ],
+    [
+      'STITCHING',
+      'Hotmelt Spraying macthine',
+      '噴膠機',
+      'Máy phun keo',
+      '10.0%',
+    ],
+    [
+      'STITCHING',
+      'Hotmelt applying macthine',
+      '过胶机',
+      'Máy lăn/quay keo nóng chảy',
+      '10.0%',
+    ],
+    ['STITCHING', 'Trimming machine', '修邊機', 'Máy xén', '10.0%'],
+    ['STITCHING', 'Hammering machine', '捶平機', 'Máy đập bằng', '10.0%'],
+    ['STITCHING', 'Blowing machine', '烘線機', 'Máy hơ chỉ', '10.0%'],
+    ['STITCHING', 'Computer Stitching', '電腦針車', 'Máy may CT', '12.5%'],
+    ['STITCHING', 'Oversew machine', '考克機', 'Máy vắt sổ', '12.5%'],
+    ['STITCHING', 'Flat type machine', '單針平車', 'Máy bàn 1 kim', '12.5%'],
+    [
+      'STITCHING',
+      '2 needles Flat type machine',
+      '雙針平車',
+      'Máy bàn 2 kim',
+      '12.5%',
+    ],
+    [
+      'STITCHING',
+      'Heat Pressing seam tape',
+      '熱風縫口密封機',
+      'Máy ép nối đường may',
+      '12.5%',
+    ],
+    [
+      'STITCHING',
+      'Toe gathering machine',
+      '縮頭機',
+      'Máy may rút mũi',
+      '12.5%',
+    ],
+    ['STITCHING', 'Post type', '高頭單針', 'Máy trụ 1 kim', '12.5%'],
+    ['STITCHING', 'Edge machine', '滾邊機', 'Máy viền', '15.0%'],
+    ['STITCHING', 'Knitting machine', '馬克機', 'Máy may đan', '15.0%'],
+    [
+      'STITCHING',
+      'Binding&Zigzag stitching machine',
+      '滾邊萬能機',
+      'Máy cuộn biên zz',
+      '15.0%',
+    ],
+    ['STITCHING', 'Zigzag', '萬能機', 'Máy zz', '15.0%'],
+    ['STITCHING', '2 needles Post type', '高頭雙針', 'Máy trụ 2 kim', '15.0%'],
+    [
+      'STITCHING',
+      '4 needles 6 threads machine',
+      '四針六線機',
+      'Máy may 4k6c',
+      '15.0%',
+    ],
+    ['ASSEMBLY', 'Attaching eyestay', '擦胶贴眼片', 'Dán đệm đế', '7.0%'],
+    ['ASSEMBLY', 'Rolling upper', '鞋面滾輪', 'Cà lăn mặt giày', '7.0%'],
+    ['ASSEMBLY', 'Rolling', '滚压', 'Cà lăn', '7.0%'],
+    ['ASSEMBLY', 'Trimming toe cap', '修剪前包片', 'Xén bao mũi', '7.0%'],
+    ['ASSEMBLY', 'Handwork', '手工', 'Thủ công', '7.0%'],
+    ['ASSEMBLY', 'Packing Handwork', '手工包装', 'Xếp hộp thủ công', '7.0%'],
+    ['ASSEMBLY', 'Marking', '画线', 'Định vị', '7.0%'],
+    ['ASSEMBLY', 'Cementing', '手工刷胶', 'Quét keo', '7.0%'],
+    ['ASSEMBLY', 'Attaching', '贴', 'Dán', '7.0%'],
+    ['ASSEMBLY', 'Cleaning', '清洁', 'Vệ sinh', '7.0%'],
+    [
+      'ASSEMBLY',
+      'Pressing for heel',
+      '後踵定型机',
+      'Máy định hình gót',
+      '11.0%',
+    ],
+    [
+      'ASSEMBLY',
+      'Pressing for vamp',
+      '鞋头定型机',
+      'Máy định hình mũi',
+      '11.0%',
+    ],
+    [
+      'ASSEMBLY',
+      'Marking on upper Machine',
+      '画线鞋身机',
+      'Máy định vị thân',
+      '11.0%',
+    ],
+    [
+      'ASSEMBLY',
+      'Hotmelt applying macthine',
+      '过胶机',
+      'Máy lăn/Quay keo nóng chảy',
+      '11.0%',
+    ],
+    [
+      'ASSEMBLY',
+      'EVA bottom wrinkle removing machine',
+      'EVA底除皺機',
+      'Máy làm thẳng đế EVA',
+      '11.0%',
+    ],
+    ['ASSEMBLY', 'Lasting machine', '入楦机', 'Máy nông phom', '11.0%'],
+    ['ASSEMBLY', 'Pressing machine', '压机', 'Máy ép đế', '11.0%'],
+    [
+      'ASSEMBLY',
+      'Versatile Pressing Machine',
+      '牆式壓機',
+      'Máy ép đa năng',
+      '11.0%',
+    ],
+    ['ASSEMBLY', 'Buffing', '打粗', 'Mài đế', '11.0%'],
+    [
+      'ASSEMBLY',
+      'Trim off excessed rubber machine',
+      '修邊條機',
+      'Máy xén dây talon',
+      '11.0%',
+    ],
+    [
+      'ASSEMBLY',
+      'Cross pressing machine',
+      '十字压机',
+      'Máy ép chữ thập',
+      '11.0%',
+    ],
+    ['ASSEMBLY', 'Heel lasting machine', '后幫機', 'Máy gò gót', '11.0%'],
+    [
+      'ASSEMBLY',
+      'Upper steaming machine',
+      '鞋頭蒸濕機',
+      'Máy hấp hơi nước',
+      '11.0%',
+    ],
+    [
+      'ASSEMBLY',
+      'Heel counter activated machine',
+      '后襯軟化機',
+      'Máy làm mềm pho',
+      '11.0%',
+    ],
+    ['ASSEMBLY', 'Strobelling machine', '拉帮机', 'Máy may cóp đế', '15.0%'],
+    [
+      'ASSEMBLY',
+      'Stitching thread on outsole',
+      '车大底机',
+      'Máy may chỉ đế',
+      '15.0%',
+    ],
+    ['ASSEMBLY', 'Toe lasting machine', '前幫機', 'Máy gò mũi', '15.0%'],
+    ['ASSEMBLY', 'Side lasting machine', '腰幫機', 'Máy gò hông', '15.0%'],
   ] as const;
 
-  return defaults.map(([department, label, loss], index) => ({
+  return defaults.map(([department, label, labelCn, labelVn, loss], index) => ({
     id: `seed-machine-${index + 1}`,
     department,
     label,
-    labelCn: '',
-    labelVn: '',
+    labelCn,
+    labelVn,
     loss,
   }));
 }
 
 function loadDb(): OfflineDb {
   if (cachedDb) {
-    cachedDb = cloneDbForMutation(cachedDb);
+    cachedDb = migrateLegacyDefaultStageCategories(
+      removeDefaultDemoData(cloneDbForMutation(cachedDb))
+    );
+    saveDb(cachedDb, undefined, false);
     return cachedDb;
   }
 
   if (typeof window === 'undefined') {
-    cachedDb = createSeedDb();
+    cachedDb = migrateLegacyDefaultStageCategories(createSeedDb());
     return cachedDb;
   }
 
@@ -795,7 +1008,9 @@ function loadDb(): OfflineDb {
 
   try {
     const parsed = JSON.parse(raw) as Partial<OfflineDb>;
-    cachedDb = removeDefaultDemoData(cloneDbForMutation(mergeDb(createSeedDb(), parsed)));
+    cachedDb = migrateLegacyDefaultStageCategories(
+      removeDefaultDemoData(cloneDbForMutation(mergeDb(createSeedDb(), parsed)))
+    );
     saveDb(cachedDb, undefined, false);
     return cachedDb;
   } catch {
@@ -805,7 +1020,11 @@ function loadDb(): OfflineDb {
   }
 }
 
-function saveDb(db: OfflineDb, previousSnapshotJson?: string, markDirty = true) {
+function saveDb(
+  db: OfflineDb,
+  previousSnapshotJson?: string,
+  markDirty = true
+) {
   if (typeof window === 'undefined') {
     return;
   }
@@ -816,16 +1035,6 @@ function saveDb(db: OfflineDb, previousSnapshotJson?: string, markDirty = true) 
   if (markDirty && previousSnapshotJson !== nextSnapshotJson) {
     touchOfflineRevision();
   }
-}
-
-function clearOfflineDbStorage() {
-  cachedDb = createEmptyDb();
-
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.removeItem(STORAGE_KEY);
 }
 
 function loadMeta(): OfflineMeta {
@@ -853,7 +1062,8 @@ function loadMeta(): OfflineMeta {
     return {
       revision: Number(parsed.revision ?? 0),
       lastSyncedRevision: Number(parsed.lastSyncedRevision ?? 0),
-      lastSyncedAt: typeof parsed.lastSyncedAt === 'string' ? parsed.lastSyncedAt : null,
+      lastSyncedAt:
+        typeof parsed.lastSyncedAt === 'string' ? parsed.lastSyncedAt : null,
     };
   } catch {
     const meta: OfflineMeta = {
@@ -890,15 +1100,26 @@ export function markOfflineSnapshotSynced() {
 
 function mergeDb(seed: OfflineDb, parsed: Partial<OfflineDb>): OfflineDb {
   return {
-    users: Array.isArray(parsed.users) && parsed.users.length > 0 ? (parsed.users as OfflineUser[]) : seed.users,
+    users:
+      Array.isArray(parsed.users) && parsed.users.length > 0
+        ? (parsed.users as OfflineUser[])
+        : seed.users,
     stageCategories:
       Array.isArray(parsed.stageCategories) && parsed.stageCategories.length > 0
         ? (parsed.stageCategories as OfflineStageCategory[])
         : seed.stageCategories,
-    stages: Array.isArray(parsed.stages) && parsed.stages.length > 0 ? (parsed.stages as OfflineStageItem[]) : seed.stages,
+    stages:
+      Array.isArray(parsed.stages) && parsed.stages.length > 0
+        ? (parsed.stages as OfflineStageItem[])
+        : seed.stages,
     tableRows:
-      Array.isArray(parsed.tableRows) && parsed.tableRows.length > 0 ? (parsed.tableRows as OfflineTableRow[]) : seed.tableRows,
-    history: Array.isArray(parsed.history) && parsed.history.length > 0 ? (parsed.history as OfflineHistoryEntry[]) : seed.history,
+      Array.isArray(parsed.tableRows) && parsed.tableRows.length > 0
+        ? (parsed.tableRows as OfflineTableRow[])
+        : seed.tableRows,
+    history:
+      Array.isArray(parsed.history) && parsed.history.length > 0
+        ? (parsed.history as OfflineHistoryEntry[])
+        : seed.history,
     controlSessions:
       Array.isArray(parsed.controlSessions) && parsed.controlSessions.length > 0
         ? (parsed.controlSessions as OfflineControlSession[])
@@ -912,40 +1133,50 @@ function mergeDb(seed: OfflineDb, parsed: Partial<OfflineDb>): OfflineDb {
         ? mergeMachineTypes(
             seed.machineTypes,
             (parsed.machineTypes as MachineTypeItem[]).filter(
-              (item) => !isLegacyDemoMachineType(item),
-            ),
+              (item) => !isLegacyDemoMachineType(item)
+            )
           )
         : seed.machineTypes,
   };
 }
 
-function mergeShareBundleStageData(current: OfflineDb, parsed: ReturnType<typeof validateShareBundle>) {
+function mergeShareBundleStageData(
+  current: OfflineDb,
+  parsed: ReturnType<typeof validateShareBundle>
+) {
   const nextStages = mergeStageItems(
     current.stages,
-    Array.isArray(parsed.snapshot.stages) ? (parsed.snapshot.stages as OfflineStageItem[]) : [],
-    parsed.videos,
+    Array.isArray(parsed.snapshot.stages)
+      ? (parsed.snapshot.stages as OfflineStageItem[])
+      : [],
+    parsed.videos
   );
 
   return {
     ...current,
     stageCategories:
-      Array.isArray(parsed.snapshot.stageCategories) && parsed.snapshot.stageCategories.length > 0
+      Array.isArray(parsed.snapshot.stageCategories) &&
+      parsed.snapshot.stageCategories.length > 0
         ? mergeStageCategories(
             current.stageCategories,
-            parsed.snapshot.stageCategories as OfflineStageCategory[],
+            parsed.snapshot.stageCategories as OfflineStageCategory[]
           )
         : current.stageCategories,
     stages: nextStages,
     machineTypes:
-      Array.isArray(parsed.snapshot.machineTypes) && parsed.snapshot.machineTypes.length > 0
-        ? mergeMachineTypes(current.machineTypes, parsed.snapshot.machineTypes as MachineTypeItem[])
+      Array.isArray(parsed.snapshot.machineTypes) &&
+      parsed.snapshot.machineTypes.length > 0
+        ? mergeMachineTypes(
+            current.machineTypes,
+            parsed.snapshot.machineTypes as MachineTypeItem[]
+          )
         : current.machineTypes,
   };
 }
 
 function mergeStageCategories(
   currentCategories: OfflineStageCategory[],
-  nextCategories: OfflineStageCategory[],
+  nextCategories: OfflineStageCategory[]
 ) {
   const merged = new Map<string, OfflineStageCategory>();
 
@@ -960,12 +1191,14 @@ function mergeStageCategories(
     }
   });
 
-  return [...merged.values()].sort((left, right) => left.sortOrder - right.sortOrder);
+  return [...merged.values()].sort(
+    (left, right) => left.sortOrder - right.sortOrder
+  );
 }
 
 function mergeMachineTypes(
   currentTypes: MachineTypeItem[],
-  nextTypes: MachineTypeItem[],
+  nextTypes: MachineTypeItem[]
 ) {
   const merged = new Map<string, MachineTypeItem>();
 
@@ -974,24 +1207,37 @@ function mergeMachineTypes(
   });
 
   nextTypes.forEach((item) => {
-    merged.set(getMachineTypeMergeKey(item), item);
+    const key = getMachineTypeMergeKey(item);
+    const current = merged.get(key);
+
+    merged.set(
+      key,
+      current
+        ? {
+            ...item,
+            labelCn: item.labelCn || current.labelCn,
+            labelVn: item.labelVn || current.labelVn,
+            loss: item.loss || current.loss,
+          }
+        : item
+    );
   });
 
   return [...merged.values()];
 }
 
 function getMachineTypeMergeKey(item: MachineTypeItem) {
-  return [
-    normalizeText(item.department),
-    item.label.trim().toLowerCase(),
-    item.labelCn.trim().toLowerCase(),
-  ].join('::');
+  return [normalizeText(item.department), item.label.trim().toLowerCase()].join(
+    '::'
+  );
 }
 
 function isLegacyDemoMachineType(item: MachineTypeItem) {
   return (
     ['machine-1', 'machine-2', 'machine-3', 'machine-4'].includes(item.id) &&
-    ['CUTTING-01', 'CUTTING-02', 'STITCHING-01', 'ASSEMBLY-01'].includes(item.label)
+    ['CUTTING-01', 'CUTTING-02', 'STITCHING-01', 'ASSEMBLY-01'].includes(
+      item.label
+    )
   );
 }
 
@@ -1004,7 +1250,7 @@ function mergeStageItems(
     fileName: string;
     mimeType: string;
     dataUrl: string;
-  }>,
+  }>
 ) {
   const videoByStageId = new Map(videos.map((video) => [video.stageId, video]));
   const merged = [...currentStages];
@@ -1014,7 +1260,10 @@ function mergeStageItems(
     indexByKey.set(getStageMergeKey(stage), index);
   });
 
-  let nextSortOrder = merged.reduce((max, stage) => Math.max(max, stage.sortOrder), 0);
+  let nextSortOrder = merged.reduce(
+    (max, stage) => Math.max(max, stage.sortOrder),
+    0
+  );
 
   nextStages.forEach((stage) => {
     const key = getStageMergeKey(stage);
@@ -1028,7 +1277,11 @@ function mergeStageItems(
         ...stage,
         id: currentStage.id,
         sortOrder: currentStage.sortOrder,
-        videoAssetId: importedVideo?.assetId ?? stage.videoAssetId ?? currentStage.videoAssetId ?? null,
+        videoAssetId:
+          importedVideo?.assetId ??
+          stage.videoAssetId ??
+          currentStage.videoAssetId ??
+          null,
       };
       return;
     }
@@ -1051,14 +1304,18 @@ async function upsertVideoAssets(
     fileName: string;
     mimeType: string;
     dataUrl: string;
-  }>,
+  }>
 ) {
   if (videos.length === 0) {
     return;
   }
 
   for (const video of videos) {
-    const file = await dataUrlToFile(video.dataUrl, video.fileName, video.mimeType);
+    const file = await dataUrlToFile(
+      video.dataUrl,
+      video.fileName,
+      video.mimeType
+    );
     await storeVideoAsset(video.assetId, file);
   }
 }
@@ -1070,12 +1327,16 @@ async function replaceVideoAssets(
     fileName: string;
     mimeType: string;
     dataUrl: string;
-  }>,
+  }>
 ) {
   await clearVideoAssets();
 
   for (const video of videos) {
-    const file = await dataUrlToFile(video.dataUrl, video.fileName, video.mimeType);
+    const file = await dataUrlToFile(
+      video.dataUrl,
+      video.fileName,
+      video.mimeType
+    );
     await storeVideoAsset(video.assetId, file);
   }
 }
@@ -1090,7 +1351,8 @@ async function clearVideoAssets() {
     const tx = db.transaction(ASSET_STORE_NAME, 'readwrite');
     tx.objectStore(ASSET_STORE_NAME).clear();
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Unable to clear asset store.'));
+    tx.onerror = () =>
+      reject(tx.error ?? new Error('Unable to clear asset store.'));
   });
 }
 
@@ -1105,15 +1367,22 @@ async function blobToDataUrl(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(reader.error ?? new Error('Unable to encode video asset.'));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error('Unable to encode video asset.'));
     reader.readAsDataURL(blob);
   });
 }
 
-async function dataUrlToFile(dataUrl: string, fileName: string, mimeType: string) {
+async function dataUrlToFile(
+  dataUrl: string,
+  fileName: string,
+  mimeType: string
+) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
-  return new File([blob], fileName, { type: mimeType || blob.type || 'video/mp4' });
+  return new File([blob], fileName, {
+    type: mimeType || blob.type || 'video/mp4',
+  });
 }
 
 function validateShareBundle(bundle: unknown): {
@@ -1149,7 +1418,10 @@ function validateShareBundle(bundle: unknown): {
 
   return {
     version: 1,
-    exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : new Date().toISOString(),
+    exportedAt:
+      typeof parsed.exportedAt === 'string'
+        ? parsed.exportedAt
+        : new Date().toISOString(),
     snapshot: parsed.snapshot,
     videos: Array.isArray(parsed.videos)
       ? (parsed.videos as Array<{
@@ -1180,7 +1452,9 @@ function normalizePath(baseURL: string | undefined, url: string | undefined) {
   const raw = `${baseURL ?? ''}${url ?? ''}`;
   const withoutOrigin = raw.replace(/^https?:\/\/[^/]+/i, '');
   const withoutQuery = withoutOrigin.split('?')[0] ?? withoutOrigin;
-  return withoutQuery.startsWith('/api') ? withoutQuery.slice(4) || '/' : withoutQuery;
+  return withoutQuery.startsWith('/api')
+    ? withoutQuery.slice(4) || '/'
+    : withoutQuery;
 }
 
 function parseRequestBody(data: unknown): OfflineRequestBody {
@@ -1189,7 +1463,11 @@ function parseRequestBody(data: unknown): OfflineRequestBody {
   if (typeof FormData !== 'undefined' && data instanceof FormData) {
     const body: OfflineRequestBody = { files: [] };
     for (const [key, value] of data.entries()) {
-      if (key === 'files' && typeof File !== 'undefined' && value instanceof File) {
+      if (
+        key === 'files' &&
+        typeof File !== 'undefined' &&
+        value instanceof File
+      ) {
         body.files?.push(value);
         continue;
       }
@@ -1214,10 +1492,16 @@ function stripFileExtension(name: string) {
 }
 
 function normalizeText(value: unknown) {
-  return String(value ?? '').trim().toLowerCase();
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
 }
 
-function validateTextOnlyField(value: unknown, label: string, maxLength: number) {
+function validateTextOnlyField(
+  value: unknown,
+  label: string,
+  maxLength: number
+) {
   const normalizedValue = String(value ?? '').trim();
 
   if (!normalizedValue) {
@@ -1249,14 +1533,22 @@ function formatRange(startTime: number, endTime: number) {
 function formatClock(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.floor(totalSeconds % 60);
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(
+    2,
+    '0'
+  )}`;
 }
 
-function buildResponse(config: InternalAxiosRequestConfig, data: unknown, status: number): AxiosResponse {
+function buildResponse(
+  config: InternalAxiosRequestConfig,
+  data: unknown,
+  status: number
+): AxiosResponse {
   return {
     data,
     status,
-    statusText: status === 401 ? 'Unauthorized' : status === 404 ? 'Not Found' : 'OK',
+    statusText:
+      status === 401 ? 'Unauthorized' : status === 404 ? 'Not Found' : 'OK',
     headers: {},
     config,
   };
@@ -1266,7 +1558,7 @@ function rejectRequest(
   config: InternalAxiosRequestConfig,
   status: number,
   message: string,
-  data?: unknown,
+  data?: unknown
 ) {
   const response = buildResponse(config, data ?? { message }, status);
   return Promise.reject(
@@ -1275,8 +1567,8 @@ function rejectRequest(
       status >= 500 ? 'ERR_BAD_RESPONSE' : 'ERR_BAD_REQUEST',
       config,
       undefined,
-      response,
-    ),
+      response
+    )
   );
 }
 
@@ -1285,8 +1577,13 @@ async function dispatchOfflineRequest(
   method: string,
   path: string,
   body: OfflineRequestBody,
-  params: Record<string, unknown>,
-): Promise<{ db: OfflineDb; data: unknown; status?: number; persist?: boolean }> {
+  params: Record<string, unknown>
+): Promise<{
+  db: OfflineDb;
+  data: unknown;
+  status?: number;
+  persist?: boolean;
+}> {
   switch (method) {
     case 'get':
       return handleGet(db, path, params);
@@ -1306,7 +1603,7 @@ async function dispatchOfflineRequest(
 async function handleGet(
   db: OfflineDb,
   path: string,
-  params: Record<string, unknown>,
+  params: Record<string, unknown>
 ) {
   if (path === '/auth/me') {
     return {
@@ -1317,13 +1614,19 @@ async function handleGet(
   }
 
   if (path === '/auth/users') {
+    if (getStoredSessionUser().role !== 'admin') {
+      throw new Error('Administrator role is required.');
+    }
+
     return {
       db,
       data: {
-        users: db.users.map(({ id, username, displayName }) => ({
+        users: db.users.map(({ id, username, displayName, factory, role }) => ({
           id,
           username,
           displayName,
+          factory: normalizeFactory(factory),
+          role: role || 'user',
         })),
       },
       persist: false,
@@ -1334,8 +1637,10 @@ async function handleGet(
     const stages = await Promise.all(
       filterStages(db.stages, params).map(async (item) => ({
         ...stripStageItem(item, db),
-        videoUrl: item.videoAssetId ? await getVideoObjectUrl(item.videoAssetId) : item.videoUrl,
-      })),
+        videoUrl: item.videoAssetId
+          ? await getVideoObjectUrl(item.videoAssetId)
+          : item.videoUrl,
+      }))
     );
 
     return {
@@ -1361,7 +1666,9 @@ async function handleGet(
     return {
       db,
       data: {
-        items: filterHistory(db.history, params).map((item) => stripHistoryItem(item, db)),
+        items: filterHistory(db.history, params).map((item) =>
+          stripHistoryItem(item, db)
+        ),
       },
       persist: false,
     };
@@ -1396,7 +1703,9 @@ async function handleGet(
       db,
       data: {
         machineTypes: department
-          ? db.machineTypes.filter((item) => normalizeText(item.department) === department)
+          ? db.machineTypes.filter(
+              (item) => normalizeText(item.department) === department
+            )
           : db.machineTypes,
       },
       persist: false,
@@ -1416,7 +1725,11 @@ async function handleGet(
   throw new Error(`Unknown offline route: ${path}`);
 }
 
-async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody) {
+async function handlePost(
+  db: OfflineDb,
+  path: string,
+  body: OfflineRequestBody
+) {
   if (path === '/auth/login') {
     const username = normalizeText(body.username);
     const password = String(body.password ?? '');
@@ -1425,7 +1738,7 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       (item) =>
         normalizeText(item.username) === username &&
         item.password === password &&
-        normalizeText(item.category) === category,
+        normalizeText(item.category) === category
     );
 
     if (!user) {
@@ -1436,10 +1749,41 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       db,
       data: {
         accessToken: `${OFFLINE_TOKEN_PREFIX}${user.username}`,
+        refreshToken: `${OFFLINE_TOKEN_PREFIX}refresh:${user.username}`,
         user: {
           username: user.username,
           displayName: user.displayName,
           category: user.category,
+          factory: normalizeFactory(user.factory),
+          role: user.role || 'user',
+        },
+      },
+      persist: false,
+    };
+  }
+
+  if (path === '/auth/refresh') {
+    const refreshToken = String(body.refreshToken ?? '');
+    const username = refreshToken.startsWith(`${OFFLINE_TOKEN_PREFIX}refresh:`)
+      ? refreshToken.slice(`${OFFLINE_TOKEN_PREFIX}refresh:`.length)
+      : '';
+    const user = db.users.find((item) => item.username === username);
+
+    if (!user) {
+      throw new Error('Refresh token is invalid.');
+    }
+
+    return {
+      db,
+      data: {
+        accessToken: `${OFFLINE_TOKEN_PREFIX}${user.username}`,
+        refreshToken,
+        user: {
+          username: user.username,
+          displayName: user.displayName,
+          category: user.category,
+          factory: normalizeFactory(user.factory),
+          role: user.role || 'user',
         },
       },
       persist: false,
@@ -1447,9 +1791,15 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
   }
 
   if (path === '/auth/register') {
+    if (getStoredSessionUser().role !== 'admin') {
+      throw new Error('Administrator role is required.');
+    }
+
     const username = normalizeText(body.username);
     const displayName = String(body.displayName ?? '').trim();
     const password = String(body.password ?? '');
+    const factory = normalizeFactory(body.factory);
+    const role = normalizeUserRole(body.role);
 
     if (!username || !displayName || !password) {
       throw new Error('Username, display name, and password are required.');
@@ -1463,6 +1813,8 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       id: createId(),
       username,
       displayName,
+      factory,
+      role,
       password,
       category: 'FF28',
     };
@@ -1494,7 +1846,9 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
     const createdStages = await Promise.all(
       files.map(async (file, index) => {
         const fallbackCode =
-          files.length === 1 ? cutDie.toUpperCase() : `${cutDie.toUpperCase()}-${index + 1}`;
+          files.length === 1
+            ? cutDie.toUpperCase()
+            : `${cutDie.toUpperCase()}-${index + 1}`;
         const parsedIdentity = parseStageIdentity(file.name, fallbackCode);
         const uniqueName = ensureUniqueStageName(db.stages, {
           area,
@@ -1510,7 +1864,7 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
             area,
             article,
           },
-          file.name,
+          file.name
         );
 
         const nextStage: OfflineStageItem = {
@@ -1541,11 +1895,11 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
             no: parsedIdentity.code,
             partName: uniqueName,
             sortOrder: db.tableRows.length + index + 1,
-          }),
+          })
         );
 
         return nextStage;
-      }),
+      })
     );
 
     return {
@@ -1565,7 +1919,11 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       throw new Error('Value and label are required.');
     }
 
-    if (db.stageCategories.some((item) => normalizeText(item.value) === normalizeText(value))) {
+    if (
+      db.stageCategories.some(
+        (item) => normalizeText(item.value) === normalizeText(value)
+      )
+    ) {
       throw new Error('Category value already exists.');
     }
 
@@ -1577,7 +1935,11 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
     };
 
     db.stageCategories.push(category);
-    return { db, data: { category: stripStageCategory(category) }, persist: true };
+    return {
+      db,
+      data: { category: stripStageCategory(category) },
+      persist: true,
+    };
   }
 
   if (path === '/stages/duplicate') {
@@ -1589,7 +1951,7 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
     }
 
     const relatedCopies = db.stages.filter((item) =>
-      normalizeText(item.code).startsWith(normalizeText(source.code)),
+      normalizeText(item.code).startsWith(normalizeText(source.code))
     ).length;
     const code = `${source.code}-COPY${relatedCopies + 1}`;
     const duplicateName = `${source.name} Copy`;
@@ -1608,8 +1970,13 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
 
     if (source.videoAssetId) {
       const duplicatedAssetId = createId();
-      const duplicated = await cloneVideoAsset(source.videoAssetId, duplicatedAssetId);
-      nextStage.videoAssetId = duplicated ? duplicatedAssetId : source.videoAssetId;
+      const duplicated = await cloneVideoAsset(
+        source.videoAssetId,
+        duplicatedAssetId
+      );
+      nextStage.videoAssetId = duplicated
+        ? duplicatedAssetId
+        : source.videoAssetId;
       if (duplicated) {
         nextStage.videoUrl = createOfflineDuplicateStageVideoUrl(source);
       }
@@ -1623,7 +1990,8 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
         (row.stageItemId === source.id ||
           (!row.stageItemId &&
             normalizeText(row.no) === normalizeText(source.code) &&
-            normalizeText(row.stage) === normalizeText(source.area ?? source.stage))),
+            normalizeText(row.stage) ===
+              normalizeText(source.area ?? source.stage)))
     );
     const rowsToClone = sourceRows;
 
@@ -1647,7 +2015,8 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       .filter(
         (entry) =>
           entry.stageItemId === source.id ||
-          (!entry.stageItemId && normalizeText(entry.stageCode) === normalizeText(source.code)),
+          (!entry.stageItemId &&
+            normalizeText(entry.stageCode) === normalizeText(source.code))
       )
       .forEach((entry) => {
         db.history.unshift({
@@ -1679,8 +2048,13 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
       value: Number(body.value ?? 0),
       committed: false,
       locked: false,
-      range: formatRange(Number(body.startTime ?? 0), Number(body.endTime ?? 0)),
-      label: `${String(body.type ?? 'NVA').toUpperCase()}: ${Number(body.value ?? 0).toFixed(1)}`,
+      range: formatRange(
+        Number(body.startTime ?? 0),
+        Number(body.endTime ?? 0)
+      ),
+      label: `${String(body.type ?? 'NVA').toUpperCase()}: ${Number(
+        body.value ?? 0
+      ).toFixed(1)}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1692,8 +2066,11 @@ async function handlePost(db: OfflineDb, path: string, body: OfflineRequestBody)
   throw new Error(`Unknown offline route: ${path}`);
 }
 
-
-async function handlePut(db: OfflineDb, path: string, body: OfflineRequestBody) {
+async function handlePut(
+  db: OfflineDb,
+  path: string,
+  body: OfflineRequestBody
+) {
   if (path === '/control-session') {
     const stageCode = String(body.stageCode ?? '').trim();
     if (!stageCode) {
@@ -1702,7 +2079,10 @@ async function handlePut(db: OfflineDb, path: string, body: OfflineRequestBody) 
 
     const stageItemId = normalizeNullableId(body.stageItemId);
     const now = new Date().toISOString();
-    const current = findControlSession(db.controlSessions, { stageCode, stageItemId });
+    const current = findControlSession(db.controlSessions, {
+      stageCode,
+      stageItemId,
+    });
     const session: OfflineControlSession = {
       id: current?.id ?? createId(),
       stageItemId,
@@ -1729,10 +2109,16 @@ async function handlePut(db: OfflineDb, path: string, body: OfflineRequestBody) 
   throw new Error(`Unknown offline route: ${path}`);
 }
 
-async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody) {
+async function handlePatch(
+  db: OfflineDb,
+  path: string,
+  body: OfflineRequestBody
+) {
   if (path === '/stages/reorder') {
     const stage = String(body.stage ?? '').trim() as StageKey;
-    const orderedIds = Array.isArray(body.orderedIds) ? body.orderedIds.map(String) : [];
+    const orderedIds = Array.isArray(body.orderedIds)
+      ? body.orderedIds.map(String)
+      : [];
     // Assign returned new array (immutable reorder)
     db.stages = reorderStageItems(db.stages, orderedIds, stage);
     return { db, data: { ok: true } };
@@ -1740,7 +2126,9 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
 
   if (path === '/table-ct/reorder') {
     const stage = String(body.stage ?? '').trim() as StageKey;
-    const orderedIds = Array.isArray(body.orderedIds) ? body.orderedIds.map(String) : [];
+    const orderedIds = Array.isArray(body.orderedIds)
+      ? body.orderedIds.map(String)
+      : [];
     // Assign returned new array (immutable reorder)
     db.tableRows = reorderTableRows(db.tableRows, orderedIds, stage);
     return { db, data: { ok: true } };
@@ -1748,7 +2136,8 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
 
   if (path === '/table-ct/confirm') {
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
-    const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : true;
+    const confirmed =
+      typeof body.confirmed === 'boolean' ? body.confirmed : true;
     const idSet = new Set(ids);
     db.tableRows = db.tableRows.map((row) =>
       idSet.has(row.id)
@@ -1758,9 +2147,11 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
             nvaValues: [...row.nvaValues],
             vaValues: [...row.vaValues],
           }
-        : row,
+        : row
     );
-    const rows = db.tableRows.filter((row) => idSet.has(row.id)).map(stripTableRow);
+    const rows = db.tableRows
+      .filter((row) => idSet.has(row.id))
+      .map(stripTableRow);
     return { db, data: { rows } };
   }
 
@@ -1773,26 +2164,32 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
       db.history
         .filter(
           (entry) =>
-            (!stageCode || normalizeText(entry.stageCode) === normalizeText(stageCode)) &&
+            (!stageCode ||
+              normalizeText(entry.stageCode) === normalizeText(stageCode)) &&
             (!stageItemId || entry.stageItemId === stageItemId) &&
-            !entry.committed,
+            !entry.committed
         )
-        .map((entry) => entry.id),
+        .map((entry) => entry.id)
     );
 
     db.history = db.history.map((entry) =>
       commitIdSet.has(entry.id)
         ? { ...entry, committed: true, updatedAt: now }
-        : entry,
+        : entry
     );
 
     const items = db.history.filter((entry) => commitIdSet.has(entry.id));
-    return { db, data: { items: items.map((item) => stripHistoryItem(item, db)) } };
+    return {
+      db,
+      data: { items: items.map((item) => stripHistoryItem(item, db)) },
+    };
   }
 
   const stageCategoryMatch = path.match(/^\/stage-categories\/([^/]+)$/);
   if (stageCategoryMatch) {
-    const catIdx = db.stageCategories.findIndex((item) => item.id === stageCategoryMatch[1]);
+    const catIdx = db.stageCategories.findIndex(
+      (item) => item.id === stageCategoryMatch[1]
+    );
     if (catIdx === -1) {
       throw new Error('Category not found.');
     }
@@ -1800,8 +2197,10 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
     const category = db.stageCategories[catIdx];
     const updatedCategory: OfflineStageCategory = {
       ...category,
-      value: typeof body.value === 'string' ? body.value.trim() : category.value,
-      label: typeof body.label === 'string' ? body.label.trim() : category.label,
+      value:
+        typeof body.value === 'string' ? body.value.trim() : category.value,
+      label:
+        typeof body.label === 'string' ? body.label.trim() : category.label,
     };
     const newCategories = [...db.stageCategories];
     newCategories[catIdx] = updatedCategory;
@@ -1812,7 +2211,9 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
 
   const tableRowMatch = path.match(/^\/table-ct\/([^/]+)$/);
   if (tableRowMatch) {
-    const rowIndex = db.tableRows.findIndex((item) => item.id === tableRowMatch[1]);
+    const rowIndex = db.tableRows.findIndex(
+      (item) => item.id === tableRowMatch[1]
+    );
     const row = rowIndex >= 0 ? db.tableRows[rowIndex] : null;
     if (!row) {
       throw new Error('Table row not found.');
@@ -1832,14 +2233,18 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
       nextRow.confirmed = body.confirmed;
     }
 
-    db.tableRows = db.tableRows.map((item) => (item.id === nextRow.id ? nextRow : item));
+    db.tableRows = db.tableRows.map((item) =>
+      item.id === nextRow.id ? nextRow : item
+    );
 
     return { db, data: { row: stripTableRow(nextRow) } };
   }
 
   const metricsMatch = path.match(/^\/table-ct\/([^/]+)\/metrics$/);
   if (metricsMatch) {
-    const rowIndex = db.tableRows.findIndex((item) => item.id === metricsMatch[1]);
+    const rowIndex = db.tableRows.findIndex(
+      (item) => item.id === metricsMatch[1]
+    );
     const row = rowIndex >= 0 ? db.tableRows[rowIndex] : null;
     if (!row) {
       throw new Error('Table row not found.');
@@ -1861,11 +2266,12 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
 
     const nextRow: OfflineTableRow = { ...row, nvaValues, vaValues };
 
-    db.tableRows = db.tableRows.map((item) => (item.id === nextRow.id ? nextRow : item));
+    db.tableRows = db.tableRows.map((item) =>
+      item.id === nextRow.id ? nextRow : item
+    );
 
     return { db, data: { row: stripTableRow(nextRow) } };
   }
-
 
   const doneMatch = path.match(/^\/table-ct\/([^/]+)\/done$/);
   if (doneMatch) {
@@ -1882,7 +2288,9 @@ async function handlePatch(db: OfflineDb, path: string, body: OfflineRequestBody
       vaValues: [...row.vaValues],
     };
 
-    db.tableRows = db.tableRows.map((item) => (item.id === nextRow.id ? nextRow : item));
+    db.tableRows = db.tableRows.map((item) =>
+      item.id === nextRow.id ? nextRow : item
+    );
 
     return { db, data: { row: stripTableRow(nextRow) } };
   }
@@ -1896,12 +2304,23 @@ async function handleDelete(db: OfflineDb, path: string) {
     const index = db.stages.findIndex((item) => item.id === stageMatch[1]);
     if (index === -1) throw new Error('Stage not found.');
     const [removed] = db.stages.splice(index, 1);
-    db.tableRows = db.tableRows.filter((row) => row.stageItemId !== removed.id && row.no !== removed.code);
-    db.history = db.history.filter((item) => item.stageItemId !== removed.id && item.stageCode !== removed.code);
-    db.controlSessions = db.controlSessions.filter(
-      (session) => session.stageItemId !== removed.id && session.stageCode !== removed.code,
+    db.tableRows = db.tableRows.filter(
+      (row) => row.stageItemId !== removed.id && row.no !== removed.code
     );
-    addDeleteLog(db, 'StageList', removed.id, `${removed.code}. ${removed.name}`);
+    db.history = db.history.filter(
+      (item) =>
+        item.stageItemId !== removed.id && item.stageCode !== removed.code
+    );
+    db.controlSessions = db.controlSessions.filter(
+      (session) =>
+        session.stageItemId !== removed.id && session.stageCode !== removed.code
+    );
+    addDeleteLog(
+      db,
+      'StageList',
+      removed.id,
+      `${removed.code}. ${removed.name}`
+    );
     if (
       removed.videoAssetId &&
       !db.stages.some((stage) => stage.videoAssetId === removed.videoAssetId)
@@ -1921,7 +2340,12 @@ async function handleDelete(db: OfflineDb, path: string) {
     const index = db.history.findIndex((item) => item.id === historyMatch[1]);
     if (index === -1) throw new Error('History item not found.');
     const [removed] = db.history.splice(index, 1);
-    addDeleteLog(db, 'HistoryEntry', removed.id, `${removed.type}: ${removed.value.toFixed(1)}`);
+    addDeleteLog(
+      db,
+      'HistoryEntry',
+      removed.id,
+      `${removed.type}: ${removed.value.toFixed(1)}`
+    );
     return { db, data: { ok: true } };
   }
 
@@ -1930,12 +2354,21 @@ async function handleDelete(db: OfflineDb, path: string) {
     const index = db.tableRows.findIndex((item) => item.id === rowMatch[1]);
     if (index === -1) throw new Error('Table row not found.');
     const [removed] = db.tableRows.splice(index, 1);
-    addDeleteLog(db, 'TableCT', removed.id, `${removed.no}. ${removed.partName}`);
+    addDeleteLog(
+      db,
+      'TableCT',
+      removed.id,
+      `${removed.no}. ${removed.partName}`
+    );
     return { db, data: { ok: true } };
   }
 
   const userMatch = path.match(/^\/auth\/users\/([^/]+)$/);
   if (userMatch) {
+    if (getStoredSessionUser().role !== 'admin') {
+      throw new Error('Administrator role is required.');
+    }
+
     const index = db.users.findIndex((item) => item.id === userMatch[1]);
     if (index === -1) throw new Error('User not found.');
     const [removed] = db.users.splice(index, 1);
@@ -1945,7 +2378,9 @@ async function handleDelete(db: OfflineDb, path: string) {
 
   const categoryMatch = path.match(/^\/stage-categories\/([^/]+)$/);
   if (categoryMatch) {
-    const index = db.stageCategories.findIndex((item) => item.id === categoryMatch[1]);
+    const index = db.stageCategories.findIndex(
+      (item) => item.id === categoryMatch[1]
+    );
     if (index === -1) throw new Error('Category not found.');
     const [removed] = db.stageCategories.splice(index, 1);
     addDeleteLog(db, 'StageCategory', removed.id, removed.label);
@@ -1959,7 +2394,7 @@ function addDeleteLog(
   db: OfflineDb,
   entityType: string,
   entityId: string,
-  entityLabel: string,
+  entityLabel: string
 ) {
   db.deleteLogs.unshift({
     id: createId(),
@@ -1973,9 +2408,10 @@ function addDeleteLog(
   });
 }
 
-
-
-function filterStages(stages: OfflineStageItem[], params: Record<string, unknown>) {
+function filterStages(
+  stages: OfflineStageItem[],
+  params: Record<string, unknown>
+) {
   const dateFrom = normalizeDateValue(params.dateFrom);
   const dateTo = normalizeDateValue(params.dateTo);
   const season = normalizeText(params.season);
@@ -1987,9 +2423,18 @@ function filterStages(stages: OfflineStageItem[], params: Record<string, unknown
   return stages
     .filter((item) => {
       if (season && !normalizeText(item.season).includes(season)) return false;
-      if (stage && !normalizeText(item.processStage ?? item.code).includes(stage)) return false;
-      if (area && !normalizeText(item.area ?? item.stage).includes(area)) return false;
-      if (article && !normalizeText(item.article ?? item.name).includes(article)) return false;
+      if (
+        stage &&
+        !normalizeText(item.processStage ?? item.code).includes(stage)
+      )
+        return false;
+      if (area && !normalizeText(item.area ?? item.stage).includes(area))
+        return false;
+      if (
+        article &&
+        !normalizeText(item.article ?? item.name).includes(article)
+      )
+        return false;
       if (cutDie && !normalizeText(item.cutDie).includes(cutDie)) return false;
       if (dateFrom && item.stageDate && item.stageDate < dateFrom) return false;
       if (dateTo && item.stageDate && item.stageDate > dateTo) return false;
@@ -1998,7 +2443,10 @@ function filterStages(stages: OfflineStageItem[], params: Record<string, unknown
     .sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
-function filterTableRows(rows: OfflineTableRow[], params: Record<string, unknown>) {
+function filterTableRows(
+  rows: OfflineTableRow[],
+  params: Record<string, unknown>
+) {
   const stage = normalizeText(params.stage);
   const stageCode = normalizeText(params.stageCode);
   const stageItemId = normalizeNullableId(params.stageItemId);
@@ -2011,7 +2459,10 @@ function filterTableRows(rows: OfflineTableRow[], params: Record<string, unknown
   });
 }
 
-function filterHistory(history: OfflineHistoryEntry[], params: Record<string, unknown>) {
+function filterHistory(
+  history: OfflineHistoryEntry[],
+  params: Record<string, unknown>
+) {
   const stageCode = normalizeText(params.stageCode);
   const stageItemId = normalizeNullableId(params.stageItemId);
 
@@ -2022,13 +2473,17 @@ function filterHistory(history: OfflineHistoryEntry[], params: Record<string, un
   });
 }
 
-function filterDeleteLogs(logs: DeleteLogItem[], params: Record<string, unknown>) {
+function filterDeleteLogs(
+  logs: DeleteLogItem[],
+  params: Record<string, unknown>
+) {
   const entityType = normalizeText(params.entityType);
   const username = normalizeText(params.username);
   const search = normalizeText(params.search);
 
   return logs.filter((log) => {
-    if (entityType && normalizeText(log.entityType) !== entityType) return false;
+    if (entityType && normalizeText(log.entityType) !== entityType)
+      return false;
     if (username && normalizeText(log.actorUsername) !== username) return false;
     if (search) {
       const haystack = [
@@ -2048,14 +2503,15 @@ function filterDeleteLogs(logs: DeleteLogItem[], params: Record<string, unknown>
 
 function findControlSession(
   sessions: OfflineControlSession[],
-  params: Record<string, unknown>,
+  params: Record<string, unknown>
 ) {
   const stageCode = normalizeText(params.stageCode);
   const stageItemId = normalizeNullableId(params.stageItemId);
 
   return (
     sessions.find((session) => {
-      if (stageCode && normalizeText(session.stageCode) !== stageCode) return false;
+      if (stageCode && normalizeText(session.stageCode) !== stageCode)
+        return false;
       if (stageItemId && session.stageItemId !== stageItemId) return false;
       return true;
     }) ?? null
@@ -2066,11 +2522,13 @@ function findControlSession(
 function reorderStageItems(
   items: OfflineStageItem[],
   orderedIds: string[],
-  stage: StageKey,
+  stage: StageKey
 ): OfflineStageItem[] {
   const scoped = items.filter((item) => item.stage === stage);
   const map = new Map(scoped.map((item) => [item.id, item]));
-  const reordered = orderedIds.map((id) => map.get(id)).filter(Boolean) as OfflineStageItem[];
+  const reordered = orderedIds
+    .map((id) => map.get(id))
+    .filter(Boolean) as OfflineStageItem[];
   const remainder = scoped.filter((item) => !orderedIds.includes(item.id));
   const next = [...reordered, ...remainder];
   let stageIndex = 0;
@@ -2086,11 +2544,13 @@ function reorderStageItems(
 function reorderTableRows(
   rows: OfflineTableRow[],
   orderedIds: string[],
-  stage: StageKey,
+  stage: StageKey
 ): OfflineTableRow[] {
   const scoped = rows.filter((row) => row.stage === stage);
   const map = new Map(scoped.map((row) => [row.id, row]));
-  const reordered = orderedIds.map((id) => map.get(id)).filter(Boolean) as OfflineTableRow[];
+  const reordered = orderedIds
+    .map((id) => map.get(id))
+    .filter(Boolean) as OfflineTableRow[];
   const remainder = scoped.filter((row) => !orderedIds.includes(row.id));
   const next = [...reordered, ...remainder];
   let stageIndex = 0;
@@ -2103,7 +2563,6 @@ function reorderTableRows(
 }
 
 function stripStageItem(item: OfflineStageItem, db?: OfflineDb): StageItem {
-
   return {
     id: item.id,
     code: item.code,
@@ -2143,12 +2602,12 @@ function removeDefaultDemoData(db: OfflineDb): OfflineDb {
   const demoStageIds = new Set(
     db.stages
       .filter((stage) => DEFAULT_DEMO_STAGE_IDS.has(stage.id))
-      .map((stage) => stage.id),
+      .map((stage) => stage.id)
   );
   const demoStageCodes = new Set(
     db.stages
       .filter((stage) => demoStageIds.has(stage.id))
-      .map((stage) => normalizeText(stage.code)),
+      .map((stage) => normalizeText(stage.code))
   );
 
   return {
@@ -2158,20 +2617,84 @@ function removeDefaultDemoData(db: OfflineDb): OfflineDb {
       (row) =>
         !DEFAULT_DEMO_ROW_IDS.has(row.id) &&
         !demoStageIds.has(row.stageItemId ?? '') &&
-        !demoStageCodes.has(normalizeText(row.no)),
+        !demoStageCodes.has(normalizeText(row.no))
     ),
     history: db.history.filter(
       (item) =>
         !DEFAULT_DEMO_HISTORY_IDS.has(item.id) &&
         !demoStageIds.has(item.stageItemId ?? '') &&
-        !demoStageCodes.has(normalizeText(item.stageCode)),
+        !demoStageCodes.has(normalizeText(item.stageCode))
     ),
     controlSessions: db.controlSessions.filter(
       (session) =>
         !demoStageIds.has(session.stageItemId ?? '') &&
-        !demoStageCodes.has(normalizeText(session.stageCode)),
+        !demoStageCodes.has(normalizeText(session.stageCode))
     ),
   };
+}
+
+function migrateLegacyDefaultStageCategories(db: OfflineDb): OfflineDb {
+  const nonLegacyCategories = db.stageCategories.filter(
+    (category) => !LEGACY_SHARE_CATEGORY_VALUES.has(normalizeText(category.value))
+  );
+  const nextStageCategories =
+    nonLegacyCategories.length > 0
+      ? migrateStockCategories(nonLegacyCategories)
+      : createSeedDb().stageCategories;
+
+  return {
+    ...db,
+    stageCategories: nextStageCategories,
+    stages: db.stages.map((stage) => ({
+      ...stage,
+      stage: normalizeText(stage.stage) === 'STOCK' ? 'STOCKFITTING' : stage.stage,
+      area: normalizeText(stage.area) === 'STOCK' ? 'STOCKFITTING' : stage.area,
+    })),
+    tableRows: db.tableRows.map((row) => ({
+      ...row,
+      stage: normalizeText(row.stage) === 'STOCK' ? 'STOCKFITTING' : row.stage,
+    })),
+  };
+}
+
+function migrateStockCategories(categories: OfflineStageCategory[]) {
+  const hasStockfitting = categories.some(
+    (category) => normalizeText(category.value) === 'STOCKFITTING'
+  );
+
+  if (hasStockfitting) {
+    return categories.filter((category) => normalizeText(category.value) !== 'STOCK');
+  }
+
+  return categories.map((category) => {
+    if (normalizeText(category.value) !== 'STOCK') {
+      return category;
+    }
+
+    return {
+      ...category,
+      id: category.id === 'cat-stock' ? 'cat-stockfitting' : category.id,
+      value: 'STOCKFITTING',
+      label: normalizeText(category.label) === 'STOCK' ? 'STOCKFITTING' : category.label,
+    };
+  });
+}
+
+function normalizeOfflineStageCategories(
+  categories: StageCategory[]
+): OfflineStageCategory[] {
+  return categories
+    .map((category, index) => ({
+      ...category,
+      value: normalizeStageTabValue(category.value),
+      label: category.label?.trim() || normalizeStageTabValue(category.value),
+      sortOrder:
+        typeof (category as Partial<OfflineStageCategory>).sortOrder === 'number'
+          ? (category as Partial<OfflineStageCategory>).sortOrder ?? index + 1
+          : index + 1,
+      isActive: (category as Partial<OfflineStageCategory>).isActive ?? true,
+    }))
+    .filter((category) => category.value.length > 0);
 }
 
 function stripTableRow(row: OfflineTableRow): CtRow {
@@ -2188,7 +2711,10 @@ function stripTableRow(row: OfflineTableRow): CtRow {
   };
 }
 
-function stripHistoryItem(item: OfflineHistoryEntry, db?: OfflineDb): HistoryItem {
+function stripHistoryItem(
+  item: OfflineHistoryEntry,
+  db?: OfflineDb
+): HistoryItem {
   return {
     id: item.id,
     startTime: item.startTime,
@@ -2240,7 +2766,18 @@ function dedupeStageTabs(tabs: StageKey[]) {
 }
 
 function normalizeStageTabValue(value: unknown) {
-  return String(value ?? '').trim().toUpperCase();
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
+}
+
+function normalizeUserRole(value: unknown) {
+  return String(value ?? '').trim().toLowerCase() === 'admin' ? 'admin' : 'user';
+}
+
+function normalizeFactory(value: unknown) {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  return FACTORIES.has(normalized) ? normalized : DEFAULT_FACTORY;
 }
 
 function stripUser(user: OfflineUser): AuthUser {
@@ -2248,6 +2785,8 @@ function stripUser(user: OfflineUser): AuthUser {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
+    factory: normalizeFactory(user.factory),
+    role: user.role || 'user',
   };
 }
 
@@ -2257,7 +2796,10 @@ function createId() {
     : `offline-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function sanitizeUploadPathSegment(value: string | undefined, fallback: string) {
+function sanitizeUploadPathSegment(
+  value: string | undefined,
+  fallback: string
+) {
   const normalized = (value ?? '')
     .trim()
     .replace(/\s+/g, '-')
@@ -2280,7 +2822,7 @@ function createOfflineStageVideoUrl(
     area: string;
     article: string;
   },
-  fileName: string | undefined,
+  fileName: string | undefined
 ) {
   const pathSegments = [
     sanitizeUploadPathSegment(payload.date, 'unknown-date'),
@@ -2290,21 +2832,27 @@ function createOfflineStageVideoUrl(
     sanitizeUploadPathSegment(payload.article, 'unknown-article'),
   ];
 
-  return `/uploads/${pathSegments.join('/')}/${createId()}${getFileExtension(fileName)}`;
+  return `/uploads/${pathSegments.join('/')}/${createId()}${getFileExtension(
+    fileName
+  )}`;
 }
 
 function createOfflineDuplicateStageVideoUrl(source: OfflineStageItem) {
   const sourceUrl = source.videoUrl ?? '';
   const extension = getFileExtension(sourceUrl);
-  const directory = sourceUrl.startsWith('/uploads/') && sourceUrl.includes('/')
-    ? sourceUrl.slice(0, sourceUrl.lastIndexOf('/'))
-    : `/uploads/${[
-        sanitizeUploadPathSegment(source.stageDate ?? '', 'unknown-date'),
-        sanitizeUploadPathSegment(source.season, 'unknown-season'),
-        sanitizeUploadPathSegment(source.processStage, 'unknown-stage'),
-        sanitizeUploadPathSegment(source.area ?? source.stage, 'unknown-area'),
-        sanitizeUploadPathSegment(source.article, 'unknown-article'),
-      ].join('/')}`;
+  const directory =
+    sourceUrl.startsWith('/uploads/') && sourceUrl.includes('/')
+      ? sourceUrl.slice(0, sourceUrl.lastIndexOf('/'))
+      : `/uploads/${[
+          sanitizeUploadPathSegment(source.stageDate ?? '', 'unknown-date'),
+          sanitizeUploadPathSegment(source.season, 'unknown-season'),
+          sanitizeUploadPathSegment(source.processStage, 'unknown-stage'),
+          sanitizeUploadPathSegment(
+            source.area ?? source.stage,
+            'unknown-area'
+          ),
+          sanitizeUploadPathSegment(source.article, 'unknown-article'),
+        ].join('/')}`;
 
   return `${directory}/${createId()}${extension}`;
 }
@@ -2320,7 +2868,8 @@ function normalizeNullableId(value: unknown) {
 }
 
 function normalizeNullableNumber(value: unknown) {
-  if (value === null || typeof value === 'undefined' || value === '') return null;
+  if (value === null || typeof value === 'undefined' || value === '')
+    return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -2364,14 +2913,15 @@ function ensureUniqueStageName(
     area: StageKey;
     stageDate: string;
     name: string;
-  },
+  }
 ) {
   const hasName = (name: string) =>
     stages.some(
       (stage) =>
-        normalizeText(stage.area ?? stage.stage) === normalizeText(payload.area) &&
+        normalizeText(stage.area ?? stage.stage) ===
+          normalizeText(payload.area) &&
         normalizeText(stage.stageDate) === normalizeText(payload.stageDate) &&
-        normalizeText(stage.name) === normalizeText(name),
+        normalizeText(stage.name) === normalizeText(name)
     );
 
   if (!hasName(payload.name)) {
@@ -2388,8 +2938,12 @@ function ensureUniqueStageName(
   return nextName;
 }
 
-function getStageIdentityKey(stage: Pick<OfflineStageItem, 'id' | 'stage' | 'area' | 'code'>) {
-  return `${normalizeText(stage.area ?? stage.stage)}::${normalizeText(stage.code)}`;
+function getStageIdentityKey(
+  stage: Pick<OfflineStageItem, 'id' | 'stage' | 'area' | 'code'>
+) {
+  return `${normalizeText(stage.area ?? stage.stage)}::${normalizeText(
+    stage.code
+  )}`;
 }
 
 function isStageCompleted(db: OfflineDb, stage: OfflineStageItem) {
@@ -2398,7 +2952,7 @@ function isStageCompleted(db: OfflineDb, stage: OfflineStageItem) {
     (row) =>
       row.stageItemId === stage.id ||
       (!row.stageItemId &&
-        `${normalizeText(row.stage)}::${normalizeText(row.no)}` === identityKey),
+        `${normalizeText(row.stage)}::${normalizeText(row.no)}` === identityKey)
   );
 
   return rows.length > 0 && rows.every((row) => row.confirmed);
@@ -2449,7 +3003,10 @@ function buildDefaultTableRow({
 function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.floor(totalSeconds % 60);
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(
+    2,
+    '0'
+  )}`;
 }
 
 function sumValues(values: number[]) {
@@ -2472,7 +3029,8 @@ function openAssetDb() {
     };
 
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Unable to open asset store.'));
+    request.onerror = () =>
+      reject(request.error ?? new Error('Unable to open asset store.'));
   });
 }
 
@@ -2486,7 +3044,8 @@ async function storeVideoAsset(assetId: string, file: File) {
     const tx = db.transaction(ASSET_STORE_NAME, 'readwrite');
     tx.objectStore(ASSET_STORE_NAME).put(file, assetId);
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Unable to store video asset.'));
+    tx.onerror = () =>
+      reject(tx.error ?? new Error('Unable to store video asset.'));
   });
 }
 
@@ -2502,10 +3061,14 @@ async function cloneVideoAsset(sourceAssetId: string, targetAssetId: string) {
       : new File([source], `${targetAssetId}.mp4`, {
           type: source.type || 'video/mp4',
         });
-  const cloned = new File([sourceFile], sourceFile.name || `${targetAssetId}.mp4`, {
-    type: sourceFile.type || 'video/mp4',
-    lastModified: sourceFile.lastModified,
-  });
+  const cloned = new File(
+    [sourceFile],
+    sourceFile.name || `${targetAssetId}.mp4`,
+    {
+      type: sourceFile.type || 'video/mp4',
+      lastModified: sourceFile.lastModified,
+    }
+  );
 
   await storeVideoAsset(targetAssetId, cloned);
   return true;
@@ -2521,7 +3084,8 @@ async function deleteVideoAsset(assetId: string) {
     const tx = db.transaction(ASSET_STORE_NAME, 'readwrite');
     tx.objectStore(ASSET_STORE_NAME).delete(assetId);
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Unable to delete video asset.'));
+    tx.onerror = () =>
+      reject(tx.error ?? new Error('Unable to delete video asset.'));
   });
 }
 
@@ -2548,14 +3112,19 @@ async function readVideoAsset(assetId: string) {
       }
 
       if (typeof Blob !== 'undefined' && value instanceof Blob) {
-        resolve(new File([value], `${assetId}.mp4`, { type: value.type || 'video/mp4' }));
+        resolve(
+          new File([value], `${assetId}.mp4`, {
+            type: value.type || 'video/mp4',
+          })
+        );
         return;
       }
 
       resolve(null);
     };
 
-    request.onerror = () => reject(request.error ?? new Error('Unable to read video asset.'));
+    request.onerror = () =>
+      reject(request.error ?? new Error('Unable to read video asset.'));
   });
 }
 
@@ -2573,8 +3142,10 @@ async function getVideoObjectUrl(assetId: string) {
   const file = await new Promise<Blob | null>((resolve, reject) => {
     const tx = db.transaction(ASSET_STORE_NAME, 'readonly');
     const request = tx.objectStore(ASSET_STORE_NAME).get(assetId);
-    request.onsuccess = () => resolve((request.result as Blob | undefined) ?? null);
-    request.onerror = () => reject(request.error ?? new Error('Unable to read video asset.'));
+    request.onsuccess = () =>
+      resolve((request.result as Blob | undefined) ?? null);
+    request.onerror = () =>
+      reject(request.error ?? new Error('Unable to read video asset.'));
   });
 
   if (!file) {
@@ -2589,7 +3160,7 @@ async function getVideoObjectUrl(assetId: string) {
 async function buildWorkbookBlob(
   path: string,
   db: OfflineDb,
-  body: OfflineRequestBody,
+  body: OfflineRequestBody
 ) {
   const rowIds = Array.isArray(body.rowIds) ? body.rowIds.map(String) : [];
 
@@ -2598,9 +3169,20 @@ async function buildWorkbookBlob(
   }
 
   const workbook = new ExcelJS.Workbook();
-  const rows = rowIds.length > 0 ? db.tableRows.filter((row) => rowIds.includes(row.id)) : db.tableRows;
+  const rows =
+    rowIds.length > 0
+      ? db.tableRows.filter((row) => rowIds.includes(row.id))
+      : db.tableRows;
   const sheet = workbook.addWorksheet('TableCT');
-  sheet.addRow(['Stage', 'Stage Item', 'No', 'Part Name', 'Machine Type', 'Confirmed', 'Done']);
+  sheet.addRow([
+    'Stage',
+    'Stage Item',
+    'No',
+    'Part Name',
+    'Machine Type',
+    'Confirmed',
+    'Done',
+  ]);
   rows.forEach((row) => {
     sheet.addRow([
       String(body.stage ?? 'ALL'),
@@ -2615,17 +3197,25 @@ async function buildWorkbookBlob(
   return buildExcelBlob(await workbook.xlsx.writeBuffer());
 }
 
-async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBody) {
+async function buildOfflineLsaWorkbookBlob(
+  db: OfflineDb,
+  body: OfflineRequestBody
+) {
   const filteredStageItemIds = Array.isArray(body.filteredStageItemIds)
     ? body.filteredStageItemIds.map(String).filter(Boolean)
     : [];
-  const selectedStageItemId = typeof body.stageItemId === 'string' ? body.stageItemId.trim() : '';
+  const selectedStageItemId =
+    typeof body.stageItemId === 'string' ? body.stageItemId.trim() : '';
   const rows = (
     filteredStageItemIds.length > 0
-      ? db.tableRows.filter((row) => row.stageItemId && filteredStageItemIds.includes(row.stageItemId))
+      ? db.tableRows.filter(
+          (row) =>
+            row.stageItemId && filteredStageItemIds.includes(row.stageItemId)
+        )
       : db.tableRows
   ).sort((a, b) => {
-    const stageDiff = getLsaStageSortIndex(a.stage) - getLsaStageSortIndex(b.stage);
+    const stageDiff =
+      getLsaStageSortIndex(a.stage) - getLsaStageSortIndex(b.stage);
     if (stageDiff !== 0) return stageDiff;
 
     const sortOrderDiff = a.sortOrder - b.sortOrder;
@@ -2654,10 +3244,13 @@ async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBo
   const estimateOutputPairs = readFiniteNumber(body.estimateOutputPairs, 0);
   const workingTimeSeconds = readFiniteNumber(body.workingTimeSeconds, 27000);
   const lossRateByMachineType = new Map(
-    db.machineTypes.map((item) => [item.label, parseLossRate(item.loss ?? '')]),
+    db.machineTypes.map((item) => [item.label, parseLossRate(item.loss ?? '')])
   );
   const labelsByMachineType = new Map(
-    db.machineTypes.map((item) => [item.label, { labelCn: item.labelCn ?? null, labelVn: item.labelVn ?? null }]),
+    db.machineTypes.map((item) => [
+      item.label,
+      { labelCn: item.labelCn ?? null, labelVn: item.labelVn ?? null },
+    ])
   );
 
   worksheet.getCell('B2').value =
@@ -2666,7 +3259,8 @@ async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBo
   worksheet.getCell('B4').value = '';
   worksheet.getCell('G3').value = estimateOutputPairs;
   worksheet.getCell('G4').value = '8 hours';
-  worksheet.getCell('G5').value = estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
+  worksheet.getCell('G5').value =
+    estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
 
   clearLsaSections(worksheet);
   const sectionRows = groupLsaRowsBySection(rows);
@@ -2677,9 +3271,14 @@ async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBo
     lossRateByMachineType,
     labelsByMachineType,
     workingTimeSeconds,
-    estimateOutputPairs,
+    estimateOutputPairs
   );
-  populateLsaRemarkSummary(worksheet, sectionRows.CUTTING, 'CUTTING', labelsByMachineType);
+  populateLsaRemarkSummary(
+    worksheet,
+    sectionRows.CUTTING,
+    'CUTTING',
+    labelsByMachineType
+  );
   populateLsaDetailSection(
     worksheet,
     sectionRows.STITCHING,
@@ -2687,9 +3286,14 @@ async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBo
     lossRateByMachineType,
     labelsByMachineType,
     workingTimeSeconds,
-    estimateOutputPairs,
+    estimateOutputPairs
   );
-  populateLsaRemarkSummary(worksheet, sectionRows.STITCHING, 'STITCHING', labelsByMachineType);
+  populateLsaRemarkSummary(
+    worksheet,
+    sectionRows.STITCHING,
+    'STITCHING',
+    labelsByMachineType
+  );
   populateLsaDetailSection(
     worksheet,
     sectionRows.ASSEMBLY,
@@ -2697,10 +3301,19 @@ async function buildOfflineLsaWorkbookBlob(db: OfflineDb, body: OfflineRequestBo
     lossRateByMachineType,
     labelsByMachineType,
     workingTimeSeconds,
-    estimateOutputPairs,
+    estimateOutputPairs
   );
-  populateLsaRemarkSummary(worksheet, sectionRows.ASSEMBLY, 'ASSEMBLY', labelsByMachineType);
-  finalizeLsaComputedWorkbook(worksheet, workingTimeSeconds, estimateOutputPairs);
+  populateLsaRemarkSummary(
+    worksheet,
+    sectionRows.ASSEMBLY,
+    'ASSEMBLY',
+    labelsByMachineType
+  );
+  finalizeLsaComputedWorkbook(
+    worksheet,
+    workingTimeSeconds,
+    estimateOutputPairs
+  );
   ensureLsaVisibleTextColor(worksheet);
   setLsaSummaryLabelColor(worksheet);
   hideLsaColumnDisplayValues(worksheet);
@@ -2751,11 +3364,15 @@ const LSA_TEMPLATE_SECTIONS = [
   { startRow: 89, endRow: 122 },
 ];
 
-const LSA_TEMPLATE_SECTION_BY_STAGE: Record<string, { startRow: number; endRow: number }> = {
+const LSA_TEMPLATE_SECTION_BY_STAGE: Record<
+  string,
+  { startRow: number; endRow: number }
+> = {
   CUTTING: LSA_TEMPLATE_SECTIONS[0],
   STITCHING: LSA_TEMPLATE_SECTIONS[1],
   ASSEMBLY: LSA_TEMPLATE_SECTIONS[2],
   STOCK: LSA_TEMPLATE_SECTIONS[2],
+  STOCKFITTING: LSA_TEMPLATE_SECTIONS[2],
 };
 
 const LSA_REMARK_SECTION_BY_STAGE: Record<
@@ -2766,6 +3383,7 @@ const LSA_REMARK_SECTION_BY_STAGE: Record<
   STITCHING: { labelStart: 38, labelCount: 19, totalRow: 57 },
   ASSEMBLY: { labelStart: 90, labelCount: 13, totalRow: 103 },
   STOCK: { labelStart: 90, labelCount: 13, totalRow: 103 },
+  STOCKFITTING: { labelStart: 90, labelCount: 13, totalRow: 103 },
 };
 
 function populateLsaDetailSection(
@@ -2773,9 +3391,12 @@ function populateLsaDetailSection(
   rows: OfflineLsaRow[],
   stage: string,
   lossRateByMachineType: Map<string, number>,
-  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+  labelsByMachineType: Map<
+    string,
+    { labelCn: string | null; labelVn: string | null }
+  >,
   workingTimeSeconds: number,
-  estimateOutputPairs: number,
+  estimateOutputPairs: number
 ) {
   const section = LSA_TEMPLATE_SECTION_BY_STAGE[stage];
   if (!section) {
@@ -2785,7 +3406,7 @@ function populateLsaDetailSection(
   const capacity = section.endRow - section.startRow + 1;
   if (rows.length > capacity) {
     throw new Error(
-      `The ${stage} LSA template supports up to ${capacity} rows, but ${rows.length} rows were selected.`,
+      `The ${stage} LSA template supports up to ${capacity} rows, but ${rows.length} rows were selected.`
     );
   }
 
@@ -2801,7 +3422,7 @@ function populateLsaDetailSection(
       row,
       lossRateByMachineType,
       labelsByMachineType,
-      g5Value,
+      g5Value
     );
 
     sectionTotals.c += metrics.c;
@@ -2844,8 +3465,11 @@ function fillLsaInputRow(
   rowNumber: number,
   row: OfflineLsaRow,
   lossRateByMachineType: Map<string, number>,
-  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
-  g5Value: number,
+  labelsByMachineType: Map<
+    string,
+    { labelCn: string | null; labelVn: string | null }
+  >,
+  g5Value: number
 ) {
   const lossRate = lossRateByMachineType.get(row.machineType) ?? 0;
   const machineLabel = getLsaMachineLabel(row.machineType, labelsByMachineType);
@@ -2892,14 +3516,19 @@ function fillLsaInputRow(
 
 function getLsaMachineLabel(
   machineType: string,
-  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+  labelsByMachineType: Map<
+    string,
+    { labelCn: string | null; labelVn: string | null }
+  >
 ) {
   if (machineType === 'Select..') {
     return '';
   }
 
   const labels = labelsByMachineType.get(machineType);
-  return [labels?.labelVn, labels?.labelCn].filter(Boolean).join('-') || machineType;
+  return (
+    [labels?.labelVn, labels?.labelCn].filter(Boolean).join('-') || machineType
+  );
 }
 
 function roundLsaOutputValue(value: number) {
@@ -2914,7 +3543,7 @@ function roundLsaOutputValue(value: number) {
 function finalizeLsaComputedWorkbook(
   worksheet: ExcelJS.Worksheet,
   workingTimeSeconds: number,
-  estimateOutputPairs: number,
+  estimateOutputPairs: number
 ) {
   const cuttingF = readNumericCell(worksheet, 'F35');
   const stitchingF = readNumericCell(worksheet, 'F86');
@@ -2930,7 +3559,8 @@ function finalizeLsaComputedWorkbook(
     readNumericCell(worksheet, 'I35') +
     readNumericCell(worksheet, 'I86') +
     readNumericCell(worksheet, 'I123');
-  worksheet.getCell('J125').value = readNumericCell(worksheet, 'J123') + readNumericCell(worksheet, 'J86');
+  worksheet.getCell('J125').value =
+    readNumericCell(worksheet, 'J123') + readNumericCell(worksheet, 'J86');
   worksheet.getCell('L125').value =
     readNumericCell(worksheet, 'L35') +
     readNumericCell(worksheet, 'L86') +
@@ -2942,22 +3572,33 @@ function finalizeLsaComputedWorkbook(
   worksheet.getCell('P5').value = assemblyF;
   worksheet.getCell('P6').value = cuttingF + stitchingF + assemblyF;
 
-  worksheet.getCell('Q2').value = cuttingF > 0 ? workingTimeSeconds / cuttingF : 0;
-  worksheet.getCell('Q3').value = stitchingF > 0 ? workingTimeSeconds / stitchingF : 0;
-  worksheet.getCell('Q4').value = cuttingF + stitchingF > 0 ? workingTimeSeconds / (cuttingF + stitchingF) : 0;
-  worksheet.getCell('Q5').value = assemblyF > 0 ? workingTimeSeconds / assemblyF : 0;
+  worksheet.getCell('Q2').value =
+    cuttingF > 0 ? workingTimeSeconds / cuttingF : 0;
+  worksheet.getCell('Q3').value =
+    stitchingF > 0 ? workingTimeSeconds / stitchingF : 0;
+  worksheet.getCell('Q4').value =
+    cuttingF + stitchingF > 0
+      ? workingTimeSeconds / (cuttingF + stitchingF)
+      : 0;
+  worksheet.getCell('Q5').value =
+    assemblyF > 0 ? workingTimeSeconds / assemblyF : 0;
   worksheet.getCell('Q6').value =
     cuttingF + stitchingF + assemblyF > 0
       ? workingTimeSeconds / (cuttingF + stitchingF + assemblyF)
       : 0;
 
-  worksheet.getCell('F36').value = cuttingF > 0 ? workingTimeSeconds / cuttingF : 0;
-  worksheet.getCell('F87').value = stitchingF > 0 ? workingTimeSeconds / stitchingF : 0;
-  worksheet.getCell('F124').value = assemblyF > 0 ? workingTimeSeconds / assemblyF : 0;
-  worksheet.getCell('F126').value = overallF > 0 ? workingTimeSeconds / overallF : 0;
+  worksheet.getCell('F36').value =
+    cuttingF > 0 ? workingTimeSeconds / cuttingF : 0;
+  worksheet.getCell('F87').value =
+    stitchingF > 0 ? workingTimeSeconds / stitchingF : 0;
+  worksheet.getCell('F124').value =
+    assemblyF > 0 ? workingTimeSeconds / assemblyF : 0;
+  worksheet.getCell('F126').value =
+    overallF > 0 ? workingTimeSeconds / overallF : 0;
 
   worksheet.getCell('B5').value = readNumericCell(worksheet, 'F126') / 7.5;
-  worksheet.getCell('G5').value = estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
+  worksheet.getCell('G5').value =
+    estimateOutputPairs > 0 ? 3600 / estimateOutputPairs : 0;
 }
 
 function readNumericCell(worksheet: ExcelJS.Worksheet, address: string) {
@@ -2983,7 +3624,11 @@ function setLsaSummaryLabelColor(worksheet: ExcelJS.Worksheet) {
 
 function hideLsaColumnDisplayValues(worksheet: ExcelJS.Worksheet) {
   for (const section of LSA_TEMPLATE_SECTIONS) {
-    for (let rowNumber = section.startRow; rowNumber <= section.endRow; rowNumber += 1) {
+    for (
+      let rowNumber = section.startRow;
+      rowNumber <= section.endRow;
+      rowNumber += 1
+    ) {
       worksheet.getCell(`N${rowNumber}`).numFmt = ';;;';
     }
   }
@@ -2991,7 +3636,11 @@ function hideLsaColumnDisplayValues(worksheet: ExcelJS.Worksheet) {
 
 function ensureLsaVisibleTextColor(worksheet: ExcelJS.Worksheet) {
   for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-    for (let colNumber = 1; colNumber <= worksheet.columnCount; colNumber += 1) {
+    for (
+      let colNumber = 1;
+      colNumber <= worksheet.columnCount;
+      colNumber += 1
+    ) {
       const cell = worksheet.getCell(rowNumber, colNumber);
       if (cell.value == null || cell.value === '') {
         continue;
@@ -3037,7 +3686,10 @@ function parseLossRate(value?: string) {
   return parsed > 1 ? parsed / 100 : parsed;
 }
 
-function ensureLsaInputRowBorders(worksheet: ExcelJS.Worksheet, rowNumber: number) {
+function ensureLsaInputRowBorders(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number
+) {
   for (let colNumber = 1; colNumber <= 13; colNumber += 1) {
     worksheet.getCell(rowNumber, colNumber).border = {
       left: { style: 'thin', color: { argb: 'FF000000' } },
@@ -3052,7 +3704,10 @@ function populateLsaRemarkSummary(
   worksheet: ExcelJS.Worksheet,
   rows: OfflineLsaRow[],
   stage: string,
-  labelsByMachineType: Map<string, { labelCn: string | null; labelVn: string | null }>,
+  labelsByMachineType: Map<
+    string,
+    { labelCn: string | null; labelVn: string | null }
+  >
 ) {
   const section = LSA_REMARK_SECTION_BY_STAGE[stage];
   if (!section) {
@@ -3090,7 +3745,7 @@ function populateLsaRemarkSummary(
   worksheet.getCell(`O${section.totalRow}`).value = 'TOTAL';
   worksheet.getCell(`Q${section.totalRow}`).value = orderedLabels.reduce(
     (sum, label) => sum + (counts.get(label) ?? 0),
-    0,
+    0
   );
 }
 
@@ -3122,7 +3777,7 @@ function writeLsaSectionTotalRow(
     j: number;
     l: number;
   },
-  workingTimeSeconds: number,
+  workingTimeSeconds: number
 ) {
   const section = LSA_TEMPLATE_SECTION_BY_STAGE[stage];
   if (!section) {
@@ -3140,14 +3795,17 @@ function writeLsaSectionTotalRow(
     worksheet.getCell(`J${totalRow}`).value = totals.j;
   }
   worksheet.getCell(`L${totalRow}`).value = totals.l;
-  worksheet.getCell(`F${ratioRow}`).value = totals.f > 0 ? workingTimeSeconds / totals.f : 0;
+  worksheet.getCell(`F${ratioRow}`).value =
+    totals.f > 0 ? workingTimeSeconds / totals.f : 0;
 }
 
 function groupLsaRowsBySection(rows: OfflineTableRow[]) {
   return {
     CUTTING: rows.filter((row) => row.stage === 'CUTTING'),
     STITCHING: rows.filter((row) => row.stage === 'STITCHING'),
-    ASSEMBLY: rows.filter((row) => row.stage === 'ASSEMBLY' || row.stage === 'STOCK'),
+    ASSEMBLY: rows.filter(
+      (row) => row.stage === 'ASSEMBLY' || row.stage === 'STOCK' || row.stage === 'STOCKFITTING'
+    ),
   };
 }
 
@@ -3160,6 +3818,7 @@ function getLsaStageSortIndex(stage: string) {
     case 'ASSEMBLY':
       return 2;
     case 'STOCK':
+    case 'STOCKFITTING':
       return 3;
     default:
       return 99;

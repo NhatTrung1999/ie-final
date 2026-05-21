@@ -153,9 +153,6 @@ export function PreviewPanel({
             <p className="text-[11px] font-semibold tracking-[0.2em] text-white/30 uppercase md:text-[12px]">
               No video selected
             </p>
-            <p className="text-[10px] text-white/15">
-              Select a stage from the list to play
-            </p>
           </div>
         </div>
       ) : null}

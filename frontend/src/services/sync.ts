@@ -62,6 +62,13 @@ async function runOfflineSnapshotSync(): Promise<SyncOfflineSnapshotResult> {
       await applySyncedSnapshot(data.snapshot);
     }
 
+    // Sync thành công → backend đang online và reach được.
+    // Gọi setBackendReachable(true) để:
+    //   1. Đánh dấu backend reachable
+    //   2. Fire OFFLINE_REACHABILITY_EVENT → dashboard tự reload dữ liệu
+    //      từ API server (trả về đầy đủ cả online data + synced data)
+    setBackendReachable(true);
+
     return data;
   } catch (error) {
     if (isOfflineNetworkError(error)) {

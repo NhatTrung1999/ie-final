@@ -254,6 +254,64 @@ export class TableCtService implements OnModuleInit {
     };
   }
 
+  async resetMetricColumn(id: string, payload: UpdateTableCtMetricsDto) {
+    await this.ensureTable();
+    await this.ensureHistoryCtColumn();
+
+    if (!id?.trim()) {
+      throw new BadRequestException('Table row id is required.');
+    }
+
+    if (
+      typeof payload.columnIndex !== 'number' ||
+      payload.columnIndex < 0 ||
+      payload.columnIndex > 9
+    ) {
+      throw new BadRequestException('Column index is invalid.');
+    }
+
+    const existingRow = await this.prismaService.tableCT.findUnique({
+      where: { id },
+    });
+
+    if (!existingRow) {
+      throw new NotFoundException('Table row was not found.');
+    }
+
+    if (existingRow.confirmed) {
+      throw new BadRequestException('Confirmed table rows are locked and cannot be edited.');
+    }
+
+    if (existingRow.done) {
+      throw new BadRequestException('Done table rows are locked and cannot be edited.');
+    }
+
+    const nvaColumn = (`ct${payload.columnIndex + 1}`) as keyof typeof existingRow;
+    const vaColumn = (`vaCt${payload.columnIndex + 1}`) as keyof typeof existingRow;
+    const ctColumn = `CT${payload.columnIndex + 1}`;
+    const [updatedRow] = await this.prismaService.$transaction([
+      this.prismaService.tableCT.update({
+        where: { id },
+        data: {
+          [nvaColumn]: 0,
+          [vaColumn]: 0,
+        },
+      }),
+      this.prismaService.historyEntry.deleteMany({
+        where: {
+          ...(existingRow.stageItemId
+            ? { stageItemId: existingRow.stageItemId }
+            : { stageCode: existingRow.no.trim().toUpperCase() }),
+          ctColumn,
+        },
+      }),
+    ]);
+
+    return {
+      row: this.mapRow(updatedRow),
+    };
+  }
+
   async reorderRows(payload: ReorderTableCtDto) {
     await this.ensureTable();
 
@@ -792,6 +850,17 @@ export class TableCtService implements OnModuleInit {
       INNER JOIN [dbo].[StageList] s
         ON s.code = t.no AND ISNULL(s.area, s.stage) = t.stage
       WHERE t.stageItemId IS NULL
+    `);
+  }
+
+  private async ensureHistoryCtColumn() {
+    await this.prismaService.$executeRawUnsafe(`
+      IF OBJECT_ID(N'dbo.HistoryPlayback', N'U') IS NOT NULL
+         AND COL_LENGTH('dbo.HistoryPlayback', 'ctColumn') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[HistoryPlayback]
+        ADD [ctColumn] NVARCHAR(20) NULL;
+      END
     `);
   }
 

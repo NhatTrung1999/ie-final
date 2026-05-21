@@ -285,7 +285,7 @@ export function StageListPanel({
             </button>
             <button
               onClick={onOpenDuplicate}
-              title="Duplicate"
+              title="Library"
               className="rounded-lg bg-violet-50 p-1.5 text-violet-600 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:hover:bg-violet-900/50"
             >
               <Copy className="h-3.5 w-3.5" />

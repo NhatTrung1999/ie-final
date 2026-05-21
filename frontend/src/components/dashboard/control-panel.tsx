@@ -381,6 +381,7 @@ export function ControlPanel({
       addHistoryItem({
         stageItemId: selectedItem.id,
         stageCode: selectedItem.code,
+        ctColumn: selectedCtCell?.columnKey,
         startTime: currentSegmentStart,
         endTime,
         type: metric,

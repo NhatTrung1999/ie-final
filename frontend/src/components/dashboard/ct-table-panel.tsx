@@ -19,7 +19,7 @@ import {
   ChevronDown,
   FileSpreadsheet,
   GripVertical,
-  RefreshCw,
+  RotateCcw,
   Trash2,
   X,
 } from 'lucide-react';
@@ -39,6 +39,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   confirmSelectedTableRows,
   completeTableRow,
+  resetTableRowMetricColumn,
   saveTableRow,
   setSelectedCtCell,
   toggleTableRowConfirm,
@@ -560,6 +561,7 @@ export function CtTablePanel({
     () => new Map(rows.map((row) => [row.id, row])),
     [rows],
   );
+  const selectedCtRow = selectedCtCell ? rowById.get(selectedCtCell.rowId) : null;
 
   const handleToggleRowSelection = (row: CtRow) => {
     const isDeselecting = activeStageItemId === (row.stageItemId ?? null);
@@ -820,6 +822,34 @@ export function CtTablePanel({
     }
   };
 
+  const handleResetSelectedColumn = async () => {
+    if (
+      isTableLocked ||
+      !selectedCtCell ||
+      !selectedCtRow ||
+      selectedCtRow.confirmed ||
+      selectedCtRow.done
+    ) {
+      return;
+    }
+
+    const result = await dispatch(
+      resetTableRowMetricColumn({
+        id: selectedCtCell.rowId,
+        columnIndex: selectedCtCell.columnIndex,
+      }),
+    );
+
+    if (resetTableRowMetricColumn.fulfilled.match(result)) {
+      handleRefresh();
+      return;
+    }
+
+    if (resetTableRowMetricColumn.rejected.match(result)) {
+      handleRefresh();
+    }
+  };
+
   const handleExportLsa = () => {
     if (isTableLocked) {
       return;
@@ -930,16 +960,6 @@ export function CtTablePanel({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => handleRefresh()}
-            disabled={isTableLocked}
-            title={isTableLocked ? 'Cannot refresh while video is playing.' : 'Refresh TableCT'}
-            className="h-8 rounded-lg border border-red-200 bg-red-50 px-3 text-[11px] text-red-500 shadow-none hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-900/50 disabled:pointer-events-auto disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-300 dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
-          >
-              <RefreshCw className="h-3 w-3" />
-              Refresh
-            </Button>
             <Button
               size="sm"
               onClick={() => void handleConfirmMany()}
@@ -954,7 +974,31 @@ export function CtTablePanel({
               className="h-8 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] text-blue-600 shadow-none hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/50 disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckCheck className="h-3 w-3" />
-              Confirm
+              Confirm All
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleResetSelectedColumn()}
+              disabled={
+                isTableLocked ||
+                !selectedCtCell ||
+                !selectedCtRow ||
+                selectedCtRow.confirmed ||
+                selectedCtRow.done
+              }
+              title={
+                isTableLocked
+                  ? 'Cannot reset while video is playing.'
+                  : !selectedCtCell
+                    ? 'Select a CT column to reset.'
+                    : selectedCtRow?.confirmed || selectedCtRow?.done
+                      ? 'Locked rows cannot be reset.'
+                      : `Reset ${selectedCtCell.columnKey} to 0`
+              }
+              className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[11px] text-slate-600 shadow-none hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset
             </Button>
             {isLsaCategory ? (
               <Button

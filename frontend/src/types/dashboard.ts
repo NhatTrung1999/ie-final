@@ -40,6 +40,7 @@ export type HistoryItem = {
   endTime: number;
   range: string;
   label: string;
+  ctColumn?: string | null;
   committed: boolean;
   locked?: boolean;
 };

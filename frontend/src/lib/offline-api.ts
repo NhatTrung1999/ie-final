@@ -89,6 +89,7 @@ const STORAGE_KEY = 'ie-video-offline-db-v1';
 const META_KEY = 'ie-video-offline-meta-v1';
 const STAGE_TABS_KEY = 'ie-video-stage-tabs-v1';
 export const OFFLINE_SYNC_EVENT = 'ie-offline-sync-changed';
+export const OFFLINE_REACHABILITY_EVENT = 'ie-offline-reachability-changed';
 const ASSET_DB_NAME = 'ie-video-offline-assets';
 const ASSET_STORE_NAME = 'video-assets';
 const OFFLINE_TOKEN_PREFIX = 'offline-token:';
@@ -130,7 +131,16 @@ let backendReachable: boolean | null = null;
 
 /** Gọi từ health check để cập nhật trạng thái backend. */
 export function setBackendReachable(reachable: boolean) {
+  const changed = backendReachable !== reachable;
   backendReachable = reachable;
+
+  if (changed && typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent(OFFLINE_REACHABILITY_EVENT, {
+        detail: { reachable },
+      }),
+    );
+  }
 }
 
 /** Trả về trạng thái backend reachability hiện tại. */
@@ -2042,6 +2052,10 @@ async function handlePost(
       id: createId(),
       stageItemId: normalizeNullableId(body.stageItemId),
       stageCode: String(body.stageCode ?? '').trim(),
+      ctColumn:
+        typeof body.ctColumn === 'string' && body.ctColumn.trim()
+          ? body.ctColumn.trim().toUpperCase()
+          : null,
       startTime: Number(body.startTime ?? 0),
       endTime: Number(body.endTime ?? 0),
       type: String(body.type ?? 'NVA').toUpperCase() as 'NVA' | 'VA' | 'SKIP',
@@ -2269,6 +2283,52 @@ async function handlePatch(
     db.tableRows = db.tableRows.map((item) =>
       item.id === nextRow.id ? nextRow : item
     );
+
+    return { db, data: { row: stripTableRow(nextRow) } };
+  }
+
+  const resetMetricsMatch = path.match(/^\/table-ct\/([^/]+)\/metrics\/reset$/);
+  if (resetMetricsMatch) {
+    const rowIndex = db.tableRows.findIndex(
+      (item) => item.id === resetMetricsMatch[1]
+    );
+    const row = rowIndex >= 0 ? db.tableRows[rowIndex] : null;
+    if (!row) {
+      throw new Error('Table row not found.');
+    }
+
+    if (row.confirmed) {
+      throw new Error('Confirmed table rows are locked and cannot be edited.');
+    }
+
+    if (row.done) {
+      throw new Error('Done table rows are locked and cannot be edited.');
+    }
+
+    const columnIndex = Number(body.columnIndex ?? -1);
+    if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex > 9) {
+      throw new Error('columnIndex must be between 0 and 9.');
+    }
+
+    const nvaValues = [...row.nvaValues];
+    const vaValues = [...row.vaValues];
+    nvaValues[columnIndex] = 0;
+    vaValues[columnIndex] = 0;
+
+    const nextRow: OfflineTableRow = { ...row, nvaValues, vaValues };
+
+    db.tableRows = db.tableRows.map((item) =>
+      item.id === nextRow.id ? nextRow : item
+    );
+    db.history = db.history.filter((entry) => {
+      const sameStage = row.stageItemId
+        ? entry.stageItemId === row.stageItemId
+        : normalizeText(entry.stageCode) === normalizeText(row.no);
+      return !(
+        sameStage &&
+        normalizeText(entry.ctColumn ?? '') === `CT${columnIndex + 1}`
+      );
+    });
 
     return { db, data: { row: stripTableRow(nextRow) } };
   }
@@ -2722,6 +2782,7 @@ function stripHistoryItem(
     range: item.range,
     label: item.label,
     committed: item.committed,
+    ctColumn: item.ctColumn ?? null,
     locked: db ? isHistoryLocked(db, item) : item.locked,
   };
 }

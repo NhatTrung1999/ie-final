@@ -27,6 +27,9 @@ import { reorderTableCtRows } from '@/services/table-ct';
 import { syncOfflineSnapshot } from '@/services/sync';
 import {
   buildOfflineShareBundle,
+  getOfflineSyncStatus,
+  OFFLINE_REACHABILITY_EVENT,
+  OFFLINE_SYNC_EVENT,
   restoreOfflineShareBundle,
 } from '@/lib/offline-api';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -178,6 +181,30 @@ export function DashboardPage({
     }
   };
 
+  function issuePlaybackRequest(
+    request:
+      | { type: 'play' }
+      | { type: 'pause' }
+      | { type: 'seek'; time: number },
+  ) {
+    setPlaybackRequest({
+      ...request,
+      token: Date.now(),
+    } as PreviewPlaybackRequest);
+  }
+
+  const reloadDashboardDataSource = async () => {
+    issuePlaybackRequest({ type: 'pause' });
+    setActiveLinkedItemId(null);
+    dispatch(setSelectedItemId(''));
+    dispatch(setSelectedCtCell(null));
+    dispatch(setHistoryItems([]));
+    dispatch(setTableRows([]));
+
+    await refreshStageTabs();
+    await loadStages();
+  };
+
   const refreshStageTabs = async () => {
     const categories = await fetchStageCategories();
     dispatch(setStageCategories(categories));
@@ -189,6 +216,9 @@ export function DashboardPage({
     if (categoryTabs.length > 0) {
       const nextTabs = Array.from(new Set(categoryTabs));
       setStageTabs(nextTabs);
+      if (!nextTabs.includes(activeStage)) {
+        dispatch(setActiveStage(nextTabs[0]));
+      }
       return nextTabs;
     }
 
@@ -201,8 +231,53 @@ export function DashboardPage({
       ),
     );
     setStageTabs(nextTabs);
+    if (nextTabs.length > 0 && !nextTabs.includes(activeStage)) {
+      dispatch(setActiveStage(nextTabs[0]));
+    }
     return nextTabs;
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleDataSourceChange = () => {
+      void reloadDashboardDataSource().catch((error) => {
+        dispatch(
+          setStageItemsError(
+            error instanceof Error ? error.message : 'Unable to reload dashboard data.',
+          ),
+        );
+      });
+    };
+    const handleSyncStateChange = () => {
+      if (getOfflineSyncStatus().pending) {
+        return;
+      }
+
+      handleDataSourceChange();
+    };
+
+    window.addEventListener('offline', handleDataSourceChange);
+    window.addEventListener('online', handleDataSourceChange);
+    window.addEventListener(OFFLINE_SYNC_EVENT, handleSyncStateChange);
+    window.addEventListener(
+      OFFLINE_REACHABILITY_EVENT,
+      handleDataSourceChange as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener('offline', handleDataSourceChange);
+      window.removeEventListener('online', handleDataSourceChange);
+      window.removeEventListener(OFFLINE_SYNC_EVENT, handleSyncStateChange);
+      window.removeEventListener(
+        OFFLINE_REACHABILITY_EVENT,
+        handleDataSourceChange as EventListener,
+      );
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, stageFilters]);
 
   useEffect(() => {
     void loadStages()
@@ -621,18 +696,6 @@ export function DashboardPage({
       setActiveLinkedItemId(null);
     }
   }, [activeLinkedItemId, orderedStageItems]);
-
-  const issuePlaybackRequest = (
-    request:
-      | { type: 'play' }
-      | { type: 'pause' }
-      | { type: 'seek'; time: number },
-  ) => {
-    setPlaybackRequest({
-      ...request,
-      token: Date.now(),
-    } as PreviewPlaybackRequest);
-  };
 
   return (
     <>

@@ -69,6 +69,7 @@ export class HistoryService implements OnModuleInit {
         endTime: row.endTime,
         range: `${formatTime(row.startTime)} - ${formatTime(row.endTime)}`,
         label: `${row.type}: ${row.value.toFixed(1)}`,
+        ctColumn: row.ctColumn,
         committed: row.committed,
         locked: isLocked,
       })),
@@ -105,6 +106,7 @@ export class HistoryService implements OnModuleInit {
         endTime: payload.endTime,
         type: payload.type,
         value: payload.value,
+        ctColumn: normalizeCtColumn(payload.ctColumn),
         committed: false,
       },
     });
@@ -116,6 +118,7 @@ export class HistoryService implements OnModuleInit {
         endTime: created.endTime,
         range: `${formatTime(created.startTime)} - ${formatTime(created.endTime)}`,
         label: `${created.type}: ${created.value.toFixed(1)}`,
+        ctColumn: created.ctColumn,
         committed: created.committed,
         locked: false,
       },
@@ -185,6 +188,7 @@ export class HistoryService implements OnModuleInit {
         endTime: row.endTime,
         range: `${formatTime(row.startTime)} - ${formatTime(row.endTime)}`,
         label: `${row.type}: ${row.value.toFixed(1)}`,
+        ctColumn: row.ctColumn,
         committed: row.committed,
         locked: isLocked,
       })),
@@ -256,6 +260,7 @@ export class HistoryService implements OnModuleInit {
         endTime: existing.endTime,
         type: existing.type,
         value: existing.value,
+        ctColumn: existing.ctColumn,
         committed: existing.committed,
       },
     });
@@ -300,6 +305,7 @@ export class HistoryService implements OnModuleInit {
           [endTime] FLOAT NOT NULL,
           [type] NVARCHAR(20) NOT NULL,
           [value] FLOAT NOT NULL,
+          [ctColumn] NVARCHAR(20) NULL,
           [committed] BIT NOT NULL CONSTRAINT [HistoryPlayback_committed_df] DEFAULT 0,
           [createdAt] DATETIME2 NOT NULL CONSTRAINT [HistoryPlayback_createdAt_df] DEFAULT SYSUTCDATETIME(),
           [updatedAt] DATETIME2 NOT NULL CONSTRAINT [HistoryPlayback_updatedAt_df] DEFAULT SYSUTCDATETIME(),
@@ -317,6 +323,12 @@ export class HistoryService implements OnModuleInit {
       BEGIN
         ALTER TABLE [dbo].[HistoryPlayback]
         ADD [stageItemId] UNIQUEIDENTIFIER NULL;
+      END
+
+      IF COL_LENGTH('dbo.HistoryPlayback', 'ctColumn') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[HistoryPlayback]
+        ADD [ctColumn] NVARCHAR(20) NULL;
       END
 
       IF EXISTS (
@@ -421,4 +433,9 @@ function formatTime(totalSeconds: number) {
   const secs = Math.floor(totalSeconds % 60);
   const hundredths = Math.round((totalSeconds - Math.floor(totalSeconds)) * 100);
   return `${mins}:${String(secs).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
+}
+
+function normalizeCtColumn(value?: string) {
+  const normalized = value?.trim().toUpperCase();
+  return normalized || null;
 }

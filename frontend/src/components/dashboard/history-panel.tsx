@@ -60,6 +60,12 @@ export function HistoryPanel({ isPlaying, onDeleteApplied, onSelectItem }: Histo
                   {entry.range.replace(' - ', '–')}
                 </span>
 
+                {entry.ctColumn ? (
+                  <span className="shrink-0 rounded-md border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">
+                    {entry.ctColumn}
+                  </span>
+                ) : null}
+
                 <span
                   className={cn(
                     'ml-auto shrink-0 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold',

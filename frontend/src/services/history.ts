@@ -51,6 +51,7 @@ export async function fetchHistory(filters?: { stageItemId?: string; stageCode?:
 export async function createHistory(payload: {
   stageItemId?: string;
   stageCode: string;
+  ctColumn?: string;
   startTime: number;
   endTime: number;
   type: 'NVA' | 'VA' | 'SKIP';

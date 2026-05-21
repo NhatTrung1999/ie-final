@@ -49,6 +49,14 @@ export class TableCtController {
     return this.tableCtService.updateMetrics(id, payload, request.user.category);
   }
 
+  @Patch(':id/metrics/reset')
+  resetMetricColumn(
+    @Param('id') id: string,
+    @Body() payload: UpdateTableCtMetricsDto,
+  ) {
+    return this.tableCtService.resetMetricColumn(id, payload);
+  }
+
   @Patch(':id/done')
   markDone(
     @Param('id') id: string,

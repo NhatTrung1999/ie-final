@@ -93,6 +93,7 @@ type SyncHistoryEntry = {
   endTime: number;
   type: 'NVA' | 'VA' | 'SKIP';
   value: number;
+  ctColumn?: string | null;
   committed: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -144,20 +145,6 @@ export class SyncService {
 
     const snapshot = parseSnapshot(payload.snapshotJson);
     const videoRefs = parseVideoRefs(payload.videoRefsJson);
-    const currentStages = await this.prismaService.stageList.findMany({
-      where: { ownerUserId: actor.sub },
-      select: {
-        id: true,
-        code: true,
-        area: true,
-        stage: true,
-        filePath: true,
-      },
-    });
-
-    const existingStageIds = currentStages.map((item) => item.id);
-    const existingCodes = currentStages.map((item) => item.code.trim().toUpperCase());
-    const existingAreas = currentStages.map((item) => normalizeScope(item.area ?? item.stage));
     const savedFiles: string[] = [];
     const videoPathByAssetId = new Map<string, string>();
     const stageIdMap = new Map<string, string>();
@@ -166,6 +153,12 @@ export class SyncService {
         .filter((stage) => stage.id)
         .map((stage) => [stage.id, stage]),
     );
+    const snapshotStageIds = (snapshot.stages ?? [])
+      .map((stage) => stage.id)
+      .filter((id): id is string => Boolean(id) && isUuid(id));
+    const snapshotStageCodes = (snapshot.stages ?? [])
+      .map((stage) => stage.code?.trim().toUpperCase())
+      .filter((code): code is string => Boolean(code));
 
     try {
       for (const [index, file] of videos.entries()) {
@@ -215,44 +208,27 @@ export class SyncService {
           });
         }
 
-        if (existingStageIds.length > 0) {
-          await tx.controlSession.deleteMany({
-            where: {
-              OR: [
-                { stageItemId: { in: existingStageIds } },
-                { stageCode: { in: existingCodes } },
-              ],
-            },
-          });
+        const existingStages = (snapshotStageIds.length > 0 || snapshotStageCodes.length > 0)
+          ? await tx.stageList.findMany({
+              where: {
+                ownerUserId: actor.sub,
+                OR: [
+                  ...(snapshotStageIds.length > 0
+                    ? [{ id: { in: snapshotStageIds } }]
+                    : []),
+                  ...(snapshotStageCodes.length > 0
+                    ? [{ code: { in: snapshotStageCodes } }]
+                    : []),
+                ],
+              },
+            })
+          : [];
 
-          await tx.historyEntry.deleteMany({
-            where: {
-              OR: [
-                { stageItemId: { in: existingStageIds } },
-                { stageCode: { in: existingCodes } },
-              ],
-            },
-          });
-
-          await tx.tableCT.deleteMany({
-            where: {
-              OR: [
-                { stageItemId: { in: existingStageIds } },
-                {
-                  stage: { in: existingAreas },
-                },
-                {
-                  no: { in: existingCodes },
-                },
-              ],
-            },
-          });
-
-          await tx.stageList.deleteMany({
-            where: {
-              ownerUserId: actor.sub,
-            },
-          });
+        const existingStagesMapById = new Map<string, any>();
+        const existingStagesMapByCode = new Map<string, any>();
+        for (const s of existingStages) {
+          existingStagesMapById.set(s.id.toLowerCase(), s);
+          existingStagesMapByCode.set(s.code.trim().toUpperCase(), s);
         }
 
         const categoryMap = new Map<string, SyncStageCategory>();
@@ -357,10 +333,16 @@ export class SyncService {
               : null;
           const stageDate = parseDate(stage.stageDate);
 
-          const createdStage = await tx.stageList.create({
-            data: {
-              id: isUuid(stage.id) ? stage.id : undefined,
-              ownerUserId: actor.sub,
+          let existingStage: any = null;
+          if (stage.id && isUuid(stage.id)) {
+            existingStage = existingStagesMapById.get(stage.id.toLowerCase());
+          }
+          if (!existingStage && stage.code) {
+            existingStage = existingStagesMapByCode.get(stage.code.trim().toUpperCase());
+          }
+
+          if (existingStage) {
+            const updateData: any = {
               code: stage.code,
               name: stage.name,
               stage: normalizeScope(stage.stage),
@@ -370,12 +352,133 @@ export class SyncService {
               article: normalizeNullableString(stage.article),
               duration: stage.duration,
               mood: stage.mood,
-              filePath,
               stageDate,
-              sortOrder: Number.isFinite(stage.sortOrder) ? Number(stage.sortOrder) : 0,
+              sortOrder: Number.isFinite(stage.sortOrder) ? Number(stage.sortOrder) : undefined,
+            };
+
+            if (filePath) {
+              updateData.filePath = filePath;
+            }
+
+            const updatedStage = await tx.stageList.update({
+              where: { id: existingStage.id },
+              data: updateData,
+            });
+            stageIdMap.set(stage.id, updatedStage.id);
+          } else {
+            const createdStage = await tx.stageList.create({
+              data: {
+                id: isUuid(stage.id) ? stage.id : undefined,
+                ownerUserId: actor.sub,
+                code: stage.code,
+                name: stage.name,
+                stage: normalizeScope(stage.stage),
+                season: normalizeNullableString(stage.season),
+                cutDie: normalizeNullableString(stage.cutDie),
+                area: normalizeNullableString(stage.area),
+                article: normalizeNullableString(stage.article),
+                duration: stage.duration,
+                mood: stage.mood,
+                filePath,
+                stageDate,
+                sortOrder: Number.isFinite(stage.sortOrder) ? Number(stage.sortOrder) : 0,
+              },
+            });
+            stageIdMap.set(stage.id, createdStage.id);
+          }
+        }
+
+        // Precise TableCT cleanup
+        const tableCtStageIdsToDelete = new Set<string>();
+        const tableCtStageCodesToDelete = new Set<string>();
+
+        for (const row of snapshot.tableRows ?? []) {
+          const stageItemId = row.stageItemId
+            ? stageIdMap.get(row.stageItemId) ?? (isUuid(row.stageItemId) ? row.stageItemId : null)
+            : null;
+
+          if (stageItemId) {
+            tableCtStageIdsToDelete.add(stageItemId.toLowerCase());
+          } else if (row.no) {
+            tableCtStageCodesToDelete.add(row.no.trim().toUpperCase());
+          }
+        }
+
+        if (tableCtStageIdsToDelete.size > 0 || tableCtStageCodesToDelete.size > 0) {
+          await tx.tableCT.deleteMany({
+            where: {
+              OR: [
+                ...(tableCtStageIdsToDelete.size > 0
+                  ? [{ stageItemId: { in: Array.from(tableCtStageIdsToDelete) } }]
+                  : []),
+                ...(tableCtStageCodesToDelete.size > 0
+                  ? [{ no: { in: Array.from(tableCtStageCodesToDelete) } }]
+                  : []),
+              ],
             },
           });
-          stageIdMap.set(stage.id, createdStage.id);
+        }
+
+        // Precise HistoryEntry cleanup
+        const historyStageIdsToDelete = new Set<string>();
+        const historyStageCodesToDelete = new Set<string>();
+
+        for (const entry of snapshot.history ?? []) {
+          const stageItemId = entry.stageItemId
+            ? stageIdMap.get(entry.stageItemId) ?? (isUuid(entry.stageItemId) ? entry.stageItemId : null)
+            : null;
+
+          if (stageItemId) {
+            historyStageIdsToDelete.add(stageItemId.toLowerCase());
+          } else if (entry.stageCode) {
+            historyStageCodesToDelete.add(entry.stageCode.trim().toUpperCase());
+          }
+        }
+
+        if (historyStageIdsToDelete.size > 0 || historyStageCodesToDelete.size > 0) {
+          await tx.historyEntry.deleteMany({
+            where: {
+              OR: [
+                ...(historyStageIdsToDelete.size > 0
+                  ? [{ stageItemId: { in: Array.from(historyStageIdsToDelete) } }]
+                  : []),
+                ...(historyStageCodesToDelete.size > 0
+                  ? [{ stageCode: { in: Array.from(historyStageCodesToDelete) } }]
+                  : []),
+              ],
+            },
+          });
+        }
+
+        // Precise ControlSession cleanup
+        const controlStageIdsToDelete = new Set<string>();
+        const controlStageCodesToDelete = new Set<string>();
+
+        for (const session of snapshot.controlSessions ?? []) {
+          const stageItemId = session.stageItemId
+            ? stageIdMap.get(session.stageItemId) ?? (isUuid(session.stageItemId) ? session.stageItemId : null)
+            : null;
+
+          if (stageItemId) {
+            controlStageIdsToDelete.add(stageItemId.toLowerCase());
+          } else if (session.stageCode) {
+            controlStageCodesToDelete.add(session.stageCode.trim().toUpperCase());
+          }
+        }
+
+        if (controlStageIdsToDelete.size > 0 || controlStageCodesToDelete.size > 0) {
+          await tx.controlSession.deleteMany({
+            where: {
+              OR: [
+                ...(controlStageIdsToDelete.size > 0
+                  ? [{ stageItemId: { in: Array.from(controlStageIdsToDelete) } }]
+                  : []),
+                ...(controlStageCodesToDelete.size > 0
+                  ? [{ stageCode: { in: Array.from(controlStageCodesToDelete) } }]
+                  : []),
+              ],
+            },
+          });
         }
 
         for (const row of snapshot.tableRows ?? []) {
@@ -441,6 +544,7 @@ export class SyncService {
               endTime: Number(entry.endTime ?? 0),
               type: entry.type,
               value: Number(entry.value ?? 0),
+              ctColumn: normalizeNullableString(entry.ctColumn),
               committed: Boolean(entry.committed),
             },
           });
@@ -803,6 +907,7 @@ export class SyncService {
       endTime: number;
       type: string;
       value: number;
+      ctColumn: string | null;
       committed: boolean;
       createdAt: Date;
       updatedAt: Date;
@@ -821,6 +926,7 @@ export class SyncService {
       endTime: row.endTime,
       type: row.type as 'NVA' | 'VA' | 'SKIP',
       value: row.value,
+      ctColumn: row.ctColumn,
       committed: row.committed,
       locked: rowLockMap.get(identityKey) ?? false,
       range: `${formatClock(row.startTime)} - ${formatClock(row.endTime)}`,

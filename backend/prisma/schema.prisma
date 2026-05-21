@@ -112,6 +112,7 @@ model HistoryEntry {
   endTime     Float
   type        String   @db.NVarChar(20)
   value       Float
+  ctColumn    String?  @db.NVarChar(20)
   committed   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

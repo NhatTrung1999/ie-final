@@ -7,6 +7,7 @@ import {
   confirmTableCtRows,
   fetchTableCt,
   markTableCtDone,
+  resetTableCtMetricColumn,
   updateTableCtMetrics,
   updateTableCtRow,
 } from '@/services/table-ct';
@@ -174,6 +175,27 @@ export const saveTableRowMetrics = createAsyncThunk(
   },
 );
 
+export const resetTableRowMetricColumn = createAsyncThunk(
+  'dashboard/resetTableRowMetricColumn',
+  async (
+    payload: {
+      id: string;
+      columnIndex: number;
+    },
+    { rejectWithValue },
+  ) => {
+    try {
+      return await resetTableCtMetricColumn(payload.id, {
+        columnIndex: payload.columnIndex,
+      });
+    } catch (error) {
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Unable to reset table metrics.',
+      );
+    }
+  },
+);
+
 export const loadHistoryItems = createAsyncThunk(
   'dashboard/loadHistoryItems',
   async (
@@ -200,6 +222,7 @@ export const addHistoryItem = createAsyncThunk(
     payload: {
       stageCode: string;
       stageItemId?: string;
+      ctColumn?: string;
       startTime: number;
       endTime: number;
       type: 'NVA' | 'VA' | 'SKIP';
@@ -462,6 +485,18 @@ const dashboardSlice = createSlice({
           typeof action.payload === 'string'
             ? action.payload
             : 'Unable to update table metrics.';
+      })
+      .addCase(resetTableRowMetricColumn.fulfilled, (state, action) => {
+        state.tableRows = state.tableRows.map((row) =>
+          row.id === action.payload.id ? action.payload : row,
+        );
+        state.tableRowsError = '';
+      })
+      .addCase(resetTableRowMetricColumn.rejected, (state, action) => {
+        state.tableRowsError =
+          typeof action.payload === 'string'
+            ? action.payload
+            : 'Unable to reset table metrics.';
       })
       .addCase(loadHistoryItems.fulfilled, (state, action) => {
         state.historyItems = action.payload;

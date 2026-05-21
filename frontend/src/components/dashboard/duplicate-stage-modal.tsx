@@ -132,11 +132,11 @@ export function DuplicateStageModal({
             <div className="flex items-center gap-2">
               <span className="h-4 w-1 rounded-full bg-linear-to-b from-blue-500 to-violet-500" />
               <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
-                Stage Library
+                Library
               </span>
             </div>
             <h2 className="text-[20px] font-semibold tracking-tight text-slate-700 dark:text-slate-100">
-              Duplicate Stage
+              Library
             </h2>
           </div>
           <button
@@ -307,7 +307,7 @@ export function DuplicateStageModal({
             className="flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-[14px] font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
           >
             <Copy className="h-4 w-4" />
-            {isSubmitting ? 'Duplicating...' : `Duplicate${selectedItems.length > 0 ? ` (${selectedItems.length})` : ''}`}
+            {isSubmitting ? 'Loading...' : `Library${selectedItems.length > 0 ? ` (${selectedItems.length})` : ''}`}
           </button>
           <button
             type="button"

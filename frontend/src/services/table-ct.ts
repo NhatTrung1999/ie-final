@@ -124,6 +124,32 @@ export async function updateTableCtMetrics(
   }
 }
 
+export async function resetTableCtMetricColumn(
+  id: string,
+  payload: {
+    columnIndex: number;
+  },
+) {
+  try {
+    const { data } = await apiClient.patch<{ row: CtRow }>(
+      `/table-ct/${id}/metrics/reset`,
+      payload,
+    );
+    return data.row;
+  } catch (error) {
+    if (isOfflineNetworkError(error)) {
+      setBackendReachable(false);
+      const { data } = await apiClient.patch<{ row: CtRow }>(
+        `/table-ct/${id}/metrics/reset`,
+        payload,
+      );
+      return data.row;
+    }
+
+    throw new Error(getErrorMessage(error, 'Unable to reset table metrics.'));
+  }
+}
+
 export async function markTableCtDone(id: string) {
   try {
     const { data } = await apiClient.patch<{ row: CtRow }>(`/table-ct/${id}/done`);

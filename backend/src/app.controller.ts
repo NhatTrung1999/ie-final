@@ -12,13 +12,13 @@ export class AppController {
   //   return this.appService.getHello();
   // }
 
-  // @Public()
-  // @Get('health')
-  // getHealth() {
-  //   return {
-  //     ok: true,
-  //     status: 'ok',
-  //     timestamp: new Date().toISOString(),
-  //   };
-  // }
+  @Public()
+  @Get('health')
+  getHealth() {
+    return {
+      ok: true,
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

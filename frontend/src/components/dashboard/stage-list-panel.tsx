@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -46,12 +47,15 @@ type StageListPanelProps = {
   onToggleHideCompleted: () => void;
   hideCompleted: boolean;
   isPlaying?: boolean;
+  isLoading?: boolean;
+  deletingItemId?: string | null;
 };
 
 type SortableStageCardProps = {
   item: StageItem;
   isActive: boolean;
   isPlaying?: boolean;
+  isDeleting?: boolean;
   displayName: string;
   onSelectItem: (id: string) => void;
   onRequestDelete: (item: StageItem) => void;
@@ -61,6 +65,7 @@ function SortableStageCard({
   item,
   isActive,
   isPlaying,
+  isDeleting = false,
   displayName,
   onSelectItem,
   onRequestDelete,
@@ -155,23 +160,29 @@ function SortableStageCard({
 
       <button
         type="button"
-        disabled={isPlaying}
+        disabled={isPlaying || isDeleting}
         onClick={(e) => {
           e.stopPropagation();
-          if (isPlaying) return;
+          if (isPlaying || isDeleting) return;
           onRequestDelete(item);
         }}
         title={
-          isPlaying ? 'Cannot delete while video is playing' : 'Delete item'
+          isDeleting ? 'Deleting...' : isPlaying ? 'Cannot delete while video is playing' : 'Delete item'
         }
         className={cn(
-          'rounded-lg p-1 text-gray-300 opacity-0 transition-all group-hover:opacity-100 dark:text-slate-600',
-          isPlaying
-            ? 'cursor-not-allowed'
-            : 'hover:bg-red-50 hover:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-400'
+          'rounded-lg p-1 transition-all group-hover:opacity-100 dark:text-slate-600',
+          isDeleting
+            ? 'opacity-100 text-red-400 cursor-not-allowed'
+            : isPlaying
+              ? 'opacity-0 text-gray-300 cursor-not-allowed'
+              : 'opacity-0 text-gray-300 hover:bg-red-50 hover:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-400'
         )}
       >
-        <Trash2 className="h-3 w-3" />
+        {isDeleting ? (
+          <Loader2 className="h-3 w-3 animate-spin text-red-400" />
+        ) : (
+          <Trash2 className="h-3 w-3" />
+        )}
       </button>
     </div>
   );
@@ -192,6 +203,8 @@ export function StageListPanel({
   onToggleHideCompleted,
   hideCompleted,
   isPlaying,
+  isLoading = false,
+  deletingItemId = null,
 }: StageListPanelProps) {
   const tabsScrollRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef({
@@ -331,10 +344,28 @@ export function StageListPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+        {/* Loading overlay khi đang search */}
+        {isLoading ? (
+          <div className="absolute inset-0 z-10 flex flex-col gap-2 px-2 py-1.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex animate-pulse items-center gap-2 rounded-xl border border-transparent px-2 py-2"
+                style={{ animationDelay: `${i * 80}ms` }}
+              >
+                <div className="h-3.5 w-3 rounded bg-gray-200 dark:bg-slate-700" />
+                <div className="h-6 w-6 shrink-0 rounded-lg bg-gray-200 dark:bg-slate-700" />
+                <div className="h-3 flex-1 rounded bg-gray-200 dark:bg-slate-700" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div
           className={cn(
-            'flex flex-col gap-0.5',
+            'flex flex-col gap-0.5 transition-opacity duration-200',
+            isLoading ? 'opacity-0 pointer-events-none' : 'opacity-100',
             items.length === 0 ? 'h-full' : ''
           )}
         >
@@ -373,6 +404,7 @@ export function StageListPanel({
                       selectedItemId === item.id || activeDragId === item.id
                     }
                     isPlaying={isPlaying}
+                    isDeleting={deletingItemId === item.id}
                     displayName={
                       displayNamesById.get(item.id) ??
                       formatStageDisplayName(item)
@@ -392,11 +424,15 @@ export function StageListPanel({
           <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_22px_64px_rgba(0,0,0,0.42)]">
             <div className="flex flex-col items-center gap-3 px-6 pt-6 pb-2 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
-                <AlertTriangle className="h-6 w-6 text-red-500 dark:text-red-400" />
+                {deletingItemId === pendingDeleteItem.id ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-red-500 dark:text-red-400" />
+                ) : (
+                  <AlertTriangle className="h-6 w-6 text-red-500 dark:text-red-400" />
+                )}
               </div>
               <div>
                 <p className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
-                  Confirm video deletion
+                  {deletingItemId === pendingDeleteItem.id ? 'Deleting...' : 'Confirm video deletion'}
                 </p>
                 <p className="mt-1 text-[12px] leading-5 text-slate-500 dark:text-slate-400">
                   Are you sure you want to delete{' '}
@@ -410,20 +446,29 @@ export function StageListPanel({
             <div className="flex gap-2 px-6 py-4">
               <button
                 type="button"
+                disabled={deletingItemId === pendingDeleteItem.id}
                 onClick={() => setPendingDeleteItem(null)}
-                className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                disabled={deletingItemId === pendingDeleteItem.id}
                 onClick={() => {
                   onDeleteItem(pendingDeleteItem.id);
                   setPendingDeleteItem(null);
                 }}
-                className="flex-1 rounded-xl bg-red-500 py-2 text-[13px] font-semibold text-white transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
+                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-500 py-2 text-[13px] font-semibold text-white transition hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-red-600 dark:hover:bg-red-700"
               >
-                Delete video
+                {deletingItemId === pendingDeleteItem.id ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete video'
+                )}
               </button>
             </div>
           </div>

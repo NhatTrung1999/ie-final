@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   Download,
+  Loader2,
   LogOut,
   Moon,
   RefreshCw,
@@ -35,6 +36,7 @@ type TopBarProps = {
   role: string;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  isLoading?: boolean;
 };
 
 export function TopBar({
@@ -51,6 +53,7 @@ export function TopBar({
   role,
   theme,
   onToggleTheme,
+  isLoading = false,
 }: TopBarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -124,8 +127,12 @@ export function TopBar({
           onClick={onOpenFilter}
           className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 lg:px-3"
         >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Filter</span>
+          {isLoading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+          ) : (
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          )}
+          <span className="hidden sm:inline">{isLoading ? 'Loading...' : 'Filter'}</span>
         </button>
 
         <div className="mx-1 hidden h-5 w-px bg-gray-200 sm:block" />

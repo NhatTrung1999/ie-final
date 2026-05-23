@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, type AxiosRequestConfig } from 'axios';
 
 import { apiClient } from '@/lib/api-client';
 import {
@@ -8,6 +8,19 @@ import {
   shouldUseOfflineData,
 } from '@/lib/offline-api';
 import type { CtRow, StageKey } from '@/types/dashboard';
+
+type FetchOptions = {
+  forceOnline?: boolean;
+};
+
+type ForceOnlineRequestConfig = AxiosRequestConfig & {
+  params?: {
+    stage?: StageKey;
+    stageCode?: string;
+    stageItemId?: string;
+  };
+  _forceOnline?: boolean;
+};
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof AxiosError) {
@@ -25,19 +38,24 @@ export async function fetchTableCt(params: {
   stage?: StageKey;
   stageCode?: string;
   stageItemId?: string;
-}) {
-  if (shouldUseOfflineData()) {
+}, options?: FetchOptions) {
+  if (!options?.forceOnline && shouldUseOfflineData()) {
     return getOfflineTableRows(params);
   }
 
   try {
-    const { data } = await apiClient.get<{ rows?: CtRow[] }>('/table-ct', {
+    const requestConfig: ForceOnlineRequestConfig = {
       params,
-    });
+      _forceOnline: options?.forceOnline,
+    };
+    const { data } = await apiClient.get<{ rows?: CtRow[] }>(
+      '/table-ct',
+      requestConfig,
+    );
 
     return data.rows ?? [];
   } catch (error) {
-    if (shouldUseOfflineData() || isOfflineNetworkError(error)) {
+    if (!options?.forceOnline && (shouldUseOfflineData() || isOfflineNetworkError(error))) {
       setBackendReachable(false);
       return getOfflineTableRows(params);
     }

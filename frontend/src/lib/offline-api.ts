@@ -697,6 +697,25 @@ export async function applySyncedSnapshot(snapshot: Partial<OfflineDb>) {
   markOfflineSnapshotSynced();
 }
 
+export async function clearOfflineSyncedData() {
+  cachedDb = null;
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(META_KEY);
+    window.localStorage.removeItem(STAGE_TABS_KEY);
+  }
+
+  try {
+    await clearVideoAssets();
+  } catch (error) {
+    console.error('Unable to clear synced offline video assets.', error);
+  }
+
+  resetVideoAssetCache();
+  notifyOfflineSyncStateChanged();
+}
+
 export async function offlineAdapter(config: InternalAxiosRequestConfig) {
   const db = loadDb();
   const previousSnapshotJson = JSON.stringify(sanitizeDbForPersist(db));

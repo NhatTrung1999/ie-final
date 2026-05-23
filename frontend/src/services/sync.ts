@@ -1,8 +1,8 @@
 import axios, { AxiosError } from 'axios';
 
 import {
-  applySyncedSnapshot,
   buildOfflineSyncFormData,
+  clearOfflineSyncedData,
   getOfflineSyncStatus,
   isOfflineNetworkError,
   setBackendReachable,
@@ -58,9 +58,7 @@ async function runOfflineSnapshotSync(): Promise<SyncOfflineSnapshotResult> {
         formData,
       );
 
-    if (data.snapshot) {
-      await applySyncedSnapshot(data.snapshot);
-    }
+    await clearOfflineSyncedData();
 
     // Sync thành công → backend đang online và reach được.
     // Gọi setBackendReachable(true) để:

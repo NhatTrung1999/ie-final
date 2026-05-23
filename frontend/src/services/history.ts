@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, type AxiosRequestConfig } from 'axios';
 
 import { apiClient } from '@/lib/api-client';
 import {
@@ -8,6 +8,18 @@ import {
   shouldUseOfflineData,
 } from '@/lib/offline-api';
 import type { HistoryItem } from '@/types/dashboard';
+
+type FetchOptions = {
+  forceOnline?: boolean;
+};
+
+type ForceOnlineRequestConfig = AxiosRequestConfig & {
+  params?: {
+    stageItemId?: string;
+    stageCode?: string;
+  };
+  _forceOnline?: boolean;
+};
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof AxiosError) {
@@ -21,13 +33,16 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export async function fetchHistory(filters?: { stageItemId?: string; stageCode?: string }) {
-  if (shouldUseOfflineData()) {
+export async function fetchHistory(
+  filters?: { stageItemId?: string; stageCode?: string },
+  options?: FetchOptions,
+) {
+  if (!options?.forceOnline && shouldUseOfflineData()) {
     return getOfflineHistoryItems(filters);
   }
 
   try {
-    const { data } = await apiClient.get<{ items?: HistoryItem[] }>('/history', {
+    const requestConfig: ForceOnlineRequestConfig = {
       params:
         filters?.stageItemId || filters?.stageCode
           ? {
@@ -35,11 +50,16 @@ export async function fetchHistory(filters?: { stageItemId?: string; stageCode?:
               ...(filters.stageCode ? { stageCode: filters.stageCode } : {}),
             }
           : undefined,
-    });
+      _forceOnline: options?.forceOnline,
+    };
+    const { data } = await apiClient.get<{ items?: HistoryItem[] }>(
+      '/history',
+      requestConfig,
+    );
 
     return data.items ?? [];
   } catch (error) {
-    if (shouldUseOfflineData() || isOfflineNetworkError(error)) {
+    if (!options?.forceOnline && (shouldUseOfflineData() || isOfflineNetworkError(error))) {
       setBackendReachable(false);
       return getOfflineHistoryItems(filters);
     }

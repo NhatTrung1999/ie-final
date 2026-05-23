@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Loader2,
   X,
 } from 'lucide-react';
 
@@ -49,6 +50,7 @@ export function DuplicateStageModal({
   const [results, setResults] = useState<StageItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export function DuplicateStageModal({
     setResults([]);
     setSelectedIds([]);
     setIsSubmitting(false);
+    setIsSearching(false);
     setSubmitError('');
   }, [defaultArea, open, today]);
 
@@ -70,6 +73,9 @@ export function DuplicateStageModal({
 
   const handleSearch = () => {
     setSubmitError('');
+    setIsSearching(true);
+    setResults([]);
+    setSelectedIds([]);
 
     void fetchStages({
       season,
@@ -92,6 +98,7 @@ export function DuplicateStageModal({
         );
       })
       .finally(() => {
+        setIsSearching(false);
       });
   };
 
@@ -212,9 +219,17 @@ export function DuplicateStageModal({
                 <button
                   type="button"
                   onClick={handleSearch}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-slate-600 to-slate-700 text-[14px] font-semibold text-white transition hover:from-slate-700 hover:to-slate-800 dark:from-slate-700 dark:to-slate-800 dark:hover:from-slate-600 dark:hover:to-slate-700"
+                  disabled={isSearching}
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-slate-600 to-slate-700 text-[14px] font-semibold text-white transition hover:from-slate-700 hover:to-slate-800 disabled:opacity-70 disabled:cursor-not-allowed dark:from-slate-700 dark:to-slate-800 dark:hover:from-slate-600 dark:hover:to-slate-700"
                 >
-                  Search
+                  {isSearching ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    'Search'
+                  )}
                 </button>
               </div>
             </div>
@@ -233,7 +248,23 @@ export function DuplicateStageModal({
                 </div>
               ) : null}
             </div>
-            {results.length === 0 ? (
+            {isSearching ? (
+              <div className="max-h-55 overflow-y-auto p-2">
+                <div className="flex flex-col gap-1.5">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex animate-pulse items-center gap-3 rounded-xl border border-transparent px-3 py-2"
+                      style={{ animationDelay: `${i * 80}ms` }}
+                    >
+                      <div className="h-4 w-4 shrink-0 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-3.5 flex-1 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-3 w-12 rounded bg-slate-100 dark:bg-slate-800" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : results.length === 0 ? (
               <div className="flex min-h-30 items-center justify-center px-4 text-center">
                 <div>
                   <div className="text-[15px] font-semibold text-slate-500 dark:text-slate-400">No Data</div>

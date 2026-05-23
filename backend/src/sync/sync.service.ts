@@ -602,13 +602,16 @@ export class SyncService {
             continue;
           }
           const logId = isUuid(log.id) ? log.id : randomUUID();
+          const actorUserId = log.actorUserId && isUuid(log.actorUserId)
+            ? log.actorUserId
+            : null;
 
           await tx.$executeRaw(
             Prisma.sql`
               IF NOT EXISTS (
                 SELECT 1
                 FROM [dbo].[DeleteLog]
-                WHERE [id] = ${log.id}
+                WHERE [id] = ${logId}
               )
               BEGIN
                 INSERT INTO [dbo].[DeleteLog] (
@@ -626,7 +629,7 @@ export class SyncService {
                   ${log.entityType},
                   ${log.entityId},
                   ${log.entityLabel},
-                  ${log.actorUserId ?? null},
+                  ${actorUserId},
                   ${log.actorUsername ?? null},
                   ${log.metadata ? JSON.stringify(log.metadata) : null},
                   ${log.createdAt ? new Date(log.createdAt) : new Date()}

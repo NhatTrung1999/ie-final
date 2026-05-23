@@ -26,11 +26,16 @@ const refreshClient = axios.create({
 
 type RetriableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
+  _forceOnline?: boolean;
 };
 
 let refreshInFlight: Promise<string> | null = null;
 
 async function dynamicAdapter(config: InternalAxiosRequestConfig) {
+  if ((config as RetriableRequestConfig)._forceOnline) {
+    return nativeAdapter(config);
+  }
+
   if (isOfflineMode() || isBrowserOffline() || isBackendReachable() === false) {
     return offlineAdapter(config);
   }

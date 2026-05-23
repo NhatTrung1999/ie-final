@@ -123,6 +123,8 @@ export function DashboardPage({
   const [activeLinkedItemId, setActiveLinkedItemId] = useState<string | null>(null);
   const [hideCompletedStageItems, setHideCompletedStageItems] = useState(false);
   const [deletedHistoryItem, setDeletedHistoryItem] = useState<HistoryItem | null>(null);
+  const [isStagesLoading, setIsStagesLoading] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [playbackState, setPlaybackState] = useState<PreviewPlaybackState>({
     currentTime: 0,
     duration: 0,
@@ -169,8 +171,13 @@ export function DashboardPage({
     }
   }, [searchParams, setSearchParams, stageFilters]);
 
-  const loadStages = async () => {
-    const result = await dispatch(loadStagesThunk(stageFilters));
+  const loadStages = async (options?: { forceOnline?: boolean }) => {
+    const result = await dispatch(
+      loadStagesThunk({
+        ...stageFilters,
+        forceOnline: options?.forceOnline,
+      }),
+    );
 
     if (loadStagesThunk.rejected.match(result)) {
       throw new Error(
@@ -205,8 +212,10 @@ export function DashboardPage({
     await loadStages();
   };
 
-  const refreshStageTabs = async () => {
-    const categories = await fetchStageCategories();
+  const refreshStageTabs = async (options?: { forceOnline?: boolean }) => {
+    const categories = await fetchStageCategories({
+      forceOnline: options?.forceOnline,
+    });
     dispatch(setStageCategories(categories));
 
     const categoryTabs = categories
@@ -222,7 +231,9 @@ export function DashboardPage({
       return nextTabs;
     }
 
-    const allStages = await fetchStages();
+    const allStages = await fetchStages(undefined, {
+      forceOnline: options?.forceOnline,
+    });
     const nextTabs = Array.from(
       new Set(
         allStages
@@ -280,11 +291,15 @@ export function DashboardPage({
   }, [dispatch, stageFilters]);
 
   useEffect(() => {
+    setIsStagesLoading(true);
     void loadStages()
       .catch((error) => {
         dispatch(setStageItemsError(
           error instanceof Error ? error.message : 'Unable to load stage items.',
         ));
+      })
+      .finally(() => {
+        setIsStagesLoading(false);
       });
   }, [dispatch, stageFilters]);
 
@@ -387,13 +402,17 @@ export function DashboardPage({
     dispatch(setSelectedCtCell(null));
   }, [activeLinkedItemId, dispatch, filteredItems, selectedItemId]);
 
-  const handleRefreshTable = async (options?: { ignoreSelection?: boolean }) => {
+  const handleRefreshTable = async (options?: {
+    ignoreSelection?: boolean;
+    forceOnline?: boolean;
+  }) => {
     if (selectedItem && !options?.ignoreSelection) {
       await dispatch(
         loadTableRows({
           stage: selectedItem.stage,
           stageCode: selectedItem.code,
           stageItemId: selectedItem.id,
+          forceOnline: options?.forceOnline,
         }),
       );
 
@@ -401,6 +420,7 @@ export function DashboardPage({
         loadHistoryItems({
           stageItemId: selectedItem.id,
           stageCode: selectedItem.code,
+          forceOnline: options?.forceOnline,
         }),
       );
       return;
@@ -409,6 +429,7 @@ export function DashboardPage({
     await dispatch(
       loadTableRows({
         stage: activeStage,
+        forceOnline: options?.forceOnline,
       }),
     );
 
@@ -537,11 +558,11 @@ export function DashboardPage({
   const handleSyncNow = async () => {
     try {
       await syncOfflineSnapshot();
-      const refreshedCategories = await fetchStageCategories();
+      const refreshedCategories = await fetchStageCategories({ forceOnline: true });
       dispatch(setStageCategories(refreshedCategories));
-      await refreshStageTabs();
-      await loadStages();
-      await handleRefreshTable();
+      await refreshStageTabs({ forceOnline: true });
+      await loadStages({ forceOnline: true });
+      await handleRefreshTable({ forceOnline: true });
       dispatch(setStageItemsError(''));
       showToast({
         title: 'Sync completed',
@@ -646,6 +667,7 @@ export function DashboardPage({
     const targetItem = orderedStageItems.find((item) => item.id === id);
     if (!targetItem) return;
 
+    setDeletingItemId(id);
     try {
       await deleteStage(id);
 
@@ -677,6 +699,8 @@ export function DashboardPage({
         description: error instanceof Error ? error.message : 'Unable to delete this video.',
         variant: 'error',
       });
+    } finally {
+      setDeletingItemId(null);
     }
   };
 
@@ -721,6 +745,7 @@ export function DashboardPage({
             role={role}
             theme={theme}
             onToggleTheme={onToggleTheme}
+            isLoading={isStagesLoading}
           />
         }
         sidebar={
@@ -756,6 +781,8 @@ export function DashboardPage({
             hideCompleted={hideCompletedStageItems}
             isPlaying={playbackState.isPlaying}
             errorMessage={stageItemsError}
+            isLoading={isStagesLoading}
+            deletingItemId={deletingItemId}
           />
         }
         controlPanel={

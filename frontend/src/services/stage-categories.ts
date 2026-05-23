@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, type AxiosRequestConfig } from 'axios';
 
 import { apiClient } from '@/lib/api-client';
 import {
@@ -9,6 +9,14 @@ import {
   shouldUseOfflineData,
 } from '@/lib/offline-api';
 import type { StageCategory } from '@/types/dashboard';
+
+type FetchOptions = {
+  forceOnline?: boolean;
+};
+
+type ForceOnlineRequestConfig = AxiosRequestConfig & {
+  _forceOnline?: boolean;
+};
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof AxiosError) {
@@ -22,18 +30,26 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export async function fetchStageCategories() {
-  if (shouldUseOfflineData()) {
+export async function fetchStageCategories(options?: FetchOptions) {
+  if (!options?.forceOnline && shouldUseOfflineData()) {
     return getOfflineStageCategories();
   }
 
   try {
-    const { data } = await apiClient.get<{ categories?: StageCategory[] }>('/stage-categories');
+    const requestConfig: ForceOnlineRequestConfig = {
+      _forceOnline: options?.forceOnline,
+    };
+    const { data } = await apiClient.get<{ categories?: StageCategory[] }>(
+      '/stage-categories',
+      requestConfig,
+    );
     const categories = data.categories ?? [];
-    replaceOfflineStageCategories(categories);
+    if (!options?.forceOnline) {
+      replaceOfflineStageCategories(categories);
+    }
     return categories;
   } catch (error) {
-    if (shouldUseOfflineData() || isOfflineNetworkError(error)) {
+    if (!options?.forceOnline && (shouldUseOfflineData() || isOfflineNetworkError(error))) {
       setBackendReachable(false);
       return getOfflineStageCategories();
     }

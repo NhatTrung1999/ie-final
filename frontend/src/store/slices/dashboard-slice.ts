@@ -40,6 +40,10 @@ type DashboardState = {
   historyError: string;
 };
 
+type ForceOnlineOption = {
+  forceOnline?: boolean;
+};
+
 const initialState: DashboardState = {
   orderedStageItems: [],
   tableRows: [],
@@ -55,9 +59,12 @@ const initialState: DashboardState = {
 
 export const loadStages = createAsyncThunk(
   'dashboard/loadStages',
-  async (filters: Partial<StageFilters> | undefined, { rejectWithValue }) => {
+  async (
+    filters: (Partial<StageFilters> & ForceOnlineOption) | undefined,
+    { rejectWithValue },
+  ) => {
     try {
-      if (shouldUseOfflineData()) {
+      if (!filters?.forceOnline && shouldUseOfflineData()) {
         return await getOfflineStages({
           dateFrom: filters?.dateFrom,
           dateTo: filters?.dateTo,
@@ -69,7 +76,7 @@ export const loadStages = createAsyncThunk(
         });
       }
 
-      return await fetchStages(filters);
+      return await fetchStages(filters, { forceOnline: filters?.forceOnline });
     } catch (error) {
       return rejectWithValue(
         error instanceof Error ? error.message : 'Unable to load stage items.',
@@ -85,15 +92,15 @@ export const loadTableRows = createAsyncThunk(
       stage?: StageKey;
       stageCode?: string;
       stageItemId?: string;
-    },
+    } & ForceOnlineOption,
     { rejectWithValue },
   ) => {
     try {
-      if (shouldUseOfflineData()) {
+      if (!filters.forceOnline && shouldUseOfflineData()) {
         return getOfflineTableRows(filters);
       }
 
-      return await fetchTableCt(filters);
+      return await fetchTableCt(filters, { forceOnline: filters.forceOnline });
     } catch (error) {
       return rejectWithValue(
         error instanceof Error ? error.message : 'Unable to load table rows.',
@@ -199,15 +206,15 @@ export const resetTableRowMetricColumn = createAsyncThunk(
 export const loadHistoryItems = createAsyncThunk(
   'dashboard/loadHistoryItems',
   async (
-    filters: { stageItemId?: string; stageCode?: string } | undefined,
+    filters: ({ stageItemId?: string; stageCode?: string } & ForceOnlineOption) | undefined,
     { rejectWithValue },
   ) => {
     try {
-      if (shouldUseOfflineData()) {
+      if (!filters?.forceOnline && shouldUseOfflineData()) {
         return getOfflineHistoryItems(filters);
       }
 
-      return await fetchHistory(filters);
+      return await fetchHistory(filters, { forceOnline: filters?.forceOnline });
     } catch (error) {
       return rejectWithValue(
         error instanceof Error ? error.message : 'Unable to load history items.',

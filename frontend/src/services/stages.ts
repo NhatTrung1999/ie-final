@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, type AxiosRequestConfig } from 'axios';
 
 import { apiClient } from '@/lib/api-client';
 import {
@@ -9,6 +9,15 @@ import {
   shouldUseOfflineData,
 } from '@/lib/offline-api';
 import type { StageFilters, StageItem, StageKey } from '@/types/dashboard';
+
+type FetchOptions = {
+  forceOnline?: boolean;
+};
+
+type ForceOnlineRequestConfig = AxiosRequestConfig & {
+  params?: Record<string, string> | undefined;
+  _forceOnline?: boolean;
+};
 
 const FILE_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api'
@@ -41,8 +50,11 @@ function mapStageItem(item: StageItem): StageItem {
   };
 }
 
-export async function fetchStages(filters?: Partial<StageFilters>) {
-  if (shouldUseOfflineData()) {
+export async function fetchStages(
+  filters?: Partial<StageFilters>,
+  options?: FetchOptions,
+) {
+  if (!options?.forceOnline && shouldUseOfflineData()) {
     return getOfflineStages({
       dateFrom: filters?.dateFrom,
       dateTo: filters?.dateTo,
@@ -67,12 +79,17 @@ export async function fetchStages(filters?: Partial<StageFilters>) {
       }),
     );
 
-    const { data } = await apiClient.get<{ stages?: StageItem[] }>('/stages', {
+    const requestConfig: ForceOnlineRequestConfig = {
       params: Object.keys(params).length > 0 ? params : undefined,
-    });
+      _forceOnline: options?.forceOnline,
+    };
+    const { data } = await apiClient.get<{ stages?: StageItem[] }>(
+      '/stages',
+      requestConfig,
+    );
     return (data.stages ?? []).map(mapStageItem);
   } catch (error) {
-    if (shouldUseOfflineData() || isOfflineNetworkError(error)) {
+    if (!options?.forceOnline && (shouldUseOfflineData() || isOfflineNetworkError(error))) {
       setBackendReachable(false);
       return getOfflineStages({
         dateFrom: filters?.dateFrom,
